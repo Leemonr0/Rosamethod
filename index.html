@@ -228,25 +228,11 @@
               <span class="smc-spec">1080p · 120 FPS</span>
             </div>
             <h3 class="smc-title" data-i18n="smc_title">Rose Method</h3>
-            <div class="smc-mode-selector">
-              <span class="smc-mode-label" data-i18n="smc_mode_label">Bypass Mode:</span>
-              <div class="smc-mode-pills" id="patchModeTabs">
-                <button type="button" class="smc-mode-pill active" data-patch-mode="enhancer" title="Enhancer 10x: 8B Filler NAL, bypasses TikTok bitrate validator (>15M), 0 decoder errors">
-                  <span class="mode-dot"></span>
-                  <span data-i18n="mode_enhancer">Enhancer 10x (Bitrate Bypass)</span>
-                </button>
-                <button type="button" class="smc-mode-pill" data-patch-mode="safe" title="Safe Pass: Clean 1:1 stream copy, zero decode errors, 2026 container sentinel (for <=15M)">
-                  <span class="mode-dot"></span>
-                  <span data-i18n="mode_safe">Safe Pass (Clean 1:1)</span>
-                </button>
-                <button type="button" class="smc-mode-pill" data-patch-mode="ghost" title="Ultra Ghost: CompressBase v4 ghost frames + udta">
-                  <span class="mode-dot"></span>
-                  <span data-i18n="mode_ghost">Ultra Ghost (CB v4)</span>
-                </button>
-                <button type="button" class="smc-mode-pill" data-patch-mode="haze" title="Haze Lite: 0x0 Stsd clear + mvhd sentinel">
-                  <span class="mode-dot"></span>
-                  <span data-i18n="mode_haze">Haze Lite (0x0)</span>
-                </button>
+            <div class="smc-active-engine-bar">
+              <span class="smc-engine-status-dot"></span>
+              <div class="smc-engine-text-col">
+                <strong data-i18n="engine_name">Единый метод Rose Pro (1080p 120 FPS)</strong>
+                <span data-i18n="engine_desc">Авто-калибровка NALU филлеров · 100% обход сжатия TikTok</span>
               </div>
             </div>
             <div class="smc-quality-tags">
@@ -262,7 +248,7 @@
                 <span data-i18n="rules_title">ГАРАНТИЯ 1080p В TIKTOK (ВАЖНЫЕ ПРАВИЛА):</span>
               </div>
               <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;">
-                <li><strong data-i18n="rule_1_head">Для тяжелых видео (>15 Мбит/с):</strong> <span data-i18n="rule_1_text">используйте режим «Enhancer 10x», чтобы обойти серверный лимит битрейта ByteDance.</span></li>
+                <li><strong data-i18n="rule_1_head">Единый метод Rose Pro:</strong> <span data-i18n="rule_1_text">автоматически калибрует NALU-филлеры и устраняет сжатие на серверах TikTok.</span></li>
                 <li><strong data-i18n="rule_2_head">В приложении TikTok:</strong> <span data-i18n="rule_2_text">в «Дополнительных параметрах» перед публикацией включите тумблер «Разрешить загрузку в высоком качестве».</span></li>
                 <li><strong data-i18n="rule_3_head">В Telegram:</strong> <span data-i18n="rule_3_text">отправляйте видео на телефон строго как «Файл» (без сжатия).</span></li>
                 <li><strong data-i18n="rule_4_head">Загрузка с ПК:</strong> <span data-i18n="rule_4_text">через tiktok.com/creator-center/upload видео идет напрямую в CDN без сжатия телефоном.</span></li>

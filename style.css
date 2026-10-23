@@ -2035,3 +2035,43 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Unified Rose Pro single engine bar */
+.smc-active-engine-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 43, 97, 0.08);
+  border: 1px solid rgba(255, 43, 97, 0.28);
+  border-radius: 12px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+.smc-engine-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rose);
+  box-shadow: 0 0 10px var(--rose);
+  animation: pulse-dot 2s infinite ease-in-out;
+  flex-shrink: 0;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.smc-engine-text-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.smc-engine-text-col strong {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.88rem;
+  color: #fff;
+}
+.smc-engine-text-col span {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
