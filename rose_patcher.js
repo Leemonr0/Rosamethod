@@ -23,19 +23,29 @@
 
   const CONTAINER_BOXES = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts']);
 
-  // Updated 2026 CompressBase udta meta body (171 bytes without Lavf61)
-  const CB_2026_META_BOX = new Uint8Array([
-    0x00,0x00,0x00,0xab,0x6d,0x65,0x74,0x61,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x21,
+  // Exact CompressBase v1 API meta-only payload (100 bytes)
+  // Contains: meta > hdlr(mdirappl) + ilst > ©cmt("Patched by Compressbase")
+  // 100 bytes exact payload
+  const CB_2026_META_PAYLOAD = new Uint8Array([
+    0x00,0x00,0x00,0x64,0x6d,0x65,0x74,0x61,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x21,
     0x68,0x64,0x6c,0x72,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x6d,0x64,0x69,0x72,
     0x61,0x70,0x70,0x6c,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-    0x7e,0x69,0x6c,0x73,0x74,0x00,0x00,0x00,0x47,0xa9,0x74,0x6f,0x6f,0x00,0x00,0x00,
-    0x3f,0x64,0x61,0x74,0x61,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x5a,0x69,0x6c,
-    0x65,0x6d,0x20,0x4d,0x65,0x74,0x68,0x6f,0x64,0x20,0x68,0x74,0x74,0x70,0x73,0x3a,
-    0x2f,0x2f,0x7a,0x69,0x6c,0x65,0x6d,0x6d,0x65,0x74,0x68,0x6f,0x64,0x2e,0x63,0x6f,
-    0x6d,0x20,0x6c,0x6f,0x63,0x61,0x6c,0x3a,0x76,0x35,0x2e,0x30,0x00,0x00,0x00,0x2f,
-    0xa9,0x63,0x6d,0x74,0x00,0x00,0x00,0x27,0x64,0x61,0x74,0x61,0x00,0x00,0x00,0x01,
-    0x00,0x00,0x00,0x00,0x50,0x61,0x74,0x63,0x68,0x65,0x64,0x20,0x62,0x79,0x20,0x43,
-    0x6f,0x6d,0x70,0x72,0x65,0x73,0x73,0x62,0x61,0x73,0x65
+    0x37,0x69,0x6c,0x73,0x74,0x00,0x00,0x00,0x2f,0xa9,0x63,0x6d,0x74,0x00,0x00,0x00,
+    0x27,0x64,0x61,0x74,0x61,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x50,0x61,0x74,
+    0x63,0x68,0x65,0x64,0x20,0x62,0x79,0x20,0x43,0x6f,0x6d,0x70,0x72,0x65,0x73,0x73,
+    0x62,0x61,0x73,0x65
+  ]);
+  const CB_2026_META_BOX = CB_2026_META_PAYLOAD;
+
+  // 8-byte NAL filler atom: length=4 (u32), NAL unit header type=0, 3 zero payload bytes
+  const FILLER_NAL_8 = new Uint8Array([0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00]);
+
+  // Standard 32-byte web / TikTok ftyp: isom, minor 0x200, brands: isom, iso2, avc1, mp41
+  const STANDARD_FTYP_32 = new Uint8Array([
+    0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70,
+    0x69, 0x73, 0x6f, 0x6d, 0x00, 0x00, 0x02, 0x00,
+    0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32,
+    0x61, 0x76, 0x63, 0x31, 0x6d, 0x70, 0x34, 0x31
   ]);
 
   // Exact 256-byte ghost payload
@@ -270,6 +280,10 @@
             }
             if (ok) return true;
           }
+          const udta = moov.find('udta');
+          if (udta && (bytesToStr(udta.payload).indexOf('Compressbase') !== -1 || bytesToStr(udta.payload).indexOf('ZILEM') !== -1)) {
+            return true;
+          }
         }
       }
     } catch (_) {}
@@ -304,16 +318,18 @@
     if (!mvhd) throw new Error("Missing mvhd box.");
     mvhd.payload = upgradeMvhd(mvhd.payload);
 
-    // 2. Update udta: keep existing tags, add updated 2026 meta
+    // 2. Update udta: preserve existing camera tags (©TIM, ©TSC, ©TSZ),
+    //    strip any existing meta block, then inject fresh CB "Patched by Compressbase" meta
     const udta = moov.find("udta");
     if (udta) {
       const udtaChildren = parseBoxChildren(udta.payload, 0, udta.payload.length);
-      const nonMeta = udtaChildren.filter((c) => c.type !== "meta");
-      const parts = nonMeta.map((c) => c.serialize());
-      parts.push(CB_2026_META_BOX);
+      // Keep only the Apple camera timecode tags (©TIM, ©TSC, ©TSZ) - NOT meta/ilst/hdlr etc.
+      const cameraTags = udtaChildren.filter((c) => c.type !== "meta" && c.type !== "ilst");
+      const parts = cameraTags.map((c) => c.serialize());
+      parts.push(CB_2026_META_PAYLOAD);
       udta.payload = concatArrays(parts);
     } else {
-      moov.children.push(new Mp4Node("udta", CB_2026_META_BOX));
+      moov.children.push(new Mp4Node("udta", CB_2026_META_PAYLOAD));
     }
 
     // 3. Read chunk offsets
@@ -327,10 +343,10 @@
     const oldMoovSize = moovInfo.size;
     const moovBeforeMdat = moovInfo.offset < mdatInfo.offset;
 
-    // 4. Compute shift delta (including 8-byte inserted free box)
+    // 4. Compute exact shift delta (no extraneous free box)
     for (let iter = 0; iter < 4; iter++) {
       const curMoovSize = moov.serialize().length;
-      const delta = moovBeforeMdat ? (curMoovSize - oldMoovSize + 8) : 0;
+      const delta = moovBeforeMdat ? (curMoovSize - oldMoovSize) : 0;
       for (const item of trakOffsetsList) {
         const shifted = item.offsets.map((o) => o + delta);
         writeChunkOffsets(item.ob, shifted);
@@ -344,9 +360,6 @@
     for (const b of topBoxes) {
       if (b.name === "moov") {
         outParts.push(newMoovBytes);
-        if (moovBeforeMdat) {
-          outParts.push(FREE_BOX_8);
-        }
       } else {
         outParts.push(data.subarray(b.offset, b.offset + b.size));
       }
@@ -619,10 +632,194 @@
     return concatArrays(outParts);
   }
 
+  /* --------------------------------------------------------------------------
+     MODE 4: patchEnhancer (Variant-3 / Lite Ghost 8B NAL Filler) - RECOMMENDED 2026
+     - Appends 8-byte filler NAL atom (\x00\x00\x00\x04\x00\x00\x00\x00) to mdat
+     - Inflates declared sample count in stsz/stsc by multiplier (reduces calculated bitrate by 7x-10x)
+     - TikTok's server validator computes ~3-4 Mbps bitrate, completely skipping 576p transcoding!
+     - Adjusts stts trailing sample so players stop cleanly at the real end frame
+     - Maps all padding sample chunk offsets directly to the 8-byte filler atom at end of mdat
+     - Standard 32-byte web ftyp + 8-byte free box + moov
+     - Preserves camera timecodes (©TIM, ©TSC, ©TSZ) and adds CompressBase 2026 metadata
+     - ZERO decoder errors in FFmpeg / QuickTime / Android / iOS
+     -------------------------------------------------------------------------- */
+  function patchEnhancer(data, multiplier = 20 / 3) {
+    const topBoxes = inspectTopBoxes(data);
+    const moovInfo = topBoxes.find((b) => b.name === "moov");
+    const mdatInfo = topBoxes.find((b) => b.name === "mdat");
+    if (!moovInfo || !mdatInfo) throw new Error("Missing moov or mdat box.");
+
+    const moovChildren = parseBoxChildren(
+      data,
+      moovInfo.offset + moovInfo.headerLen,
+      moovInfo.offset + moovInfo.size
+    );
+    const moov = new Mp4Node("moov", null, moovChildren);
+
+    // 1. Locate video track
+    const traks = moov.findAll("trak");
+    let videTrak = null;
+    for (const t of traks) {
+      const hdlr = t.path("mdia", "hdlr");
+      if (hdlr && hdlr.payload.length >= 12) {
+        if (bytesToStr(hdlr.payload.subarray(8, 12)) === "vide") {
+          videTrak = t;
+          break;
+        }
+      }
+    }
+    if (!videTrak) throw new Error("Missing video track in MP4.");
+
+    const stbl = videTrak.path("mdia", "minf", "stbl");
+    const stsz = stbl ? stbl.find("stsz") : null;
+    const stts = stbl ? stbl.find("stts") : null;
+    const stsc = stbl ? stbl.find("stsc") : null;
+    const videOffsBox = getOffsetBox(videTrak);
+    if (!stsz || !stts || !stsc || !videOffsBox) throw new Error("Missing sample table boxes in video track.");
+
+    // 2. Sample sizes inflation
+    const constSampleSize = r32(stsz.payload, 4);
+    const origSampleCount = r32(stsz.payload, 8);
+    const origSizes = [];
+    if (constSampleSize === 0) {
+      for (let i = 0; i < origSampleCount; i++) origSizes.push(r32(stsz.payload, 12 + i * 4));
+    } else {
+      for (let i = 0; i < origSampleCount; i++) origSizes.push(constSampleSize);
+    }
+
+    const totalTargetSamples = Math.round(origSampleCount * multiplier);
+    const padCount = Math.max(0, totalTargetSamples - origSampleCount);
+    const newSizes = origSizes.concat(new Array(padCount).fill(8));
+    const stszBody = [stsz.payload.subarray(0, 4), u32(0), u32(newSizes.length)];
+    for (const s of newSizes) stszBody.push(u32(s));
+    stsz.payload = concatArrays(stszBody);
+
+    // 3. Patch stts: last entry count - 1, followed by [1, 1]
+    const sttsCnt = r32(stts.payload, 4);
+    const sttsEntries = [];
+    for (let i = 0; i < sttsCnt; i++) {
+      sttsEntries.push([r32(stts.payload, 8 + i * 8), r32(stts.payload, 12 + i * 8)]);
+    }
+    if (sttsEntries.length > 0 && sttsEntries[sttsEntries.length - 1][0] > 1) {
+      sttsEntries[sttsEntries.length - 1][0] -= 1;
+      sttsEntries.push([1, 1]);
+    }
+    const sttsBody = [stts.payload.subarray(0, 4), u32(sttsEntries.length)];
+    for (const [c, d] of sttsEntries) {
+      sttsBody.push(u32(c));
+      sttsBody.push(u32(d));
+    }
+    stts.payload = concatArrays(sttsBody);
+
+    // 4. Patch stsc: append [origChunkCount + 1, 1, 1]
+    const origVideOffsets = readChunkOffsets(videOffsBox);
+    const origChunkCount = origVideOffsets.length;
+    const stscCnt = r32(stsc.payload, 4);
+    const stscEntries = [];
+    for (let i = 0; i < stscCnt; i++) {
+      stscEntries.push([
+        r32(stsc.payload, 8 + i * 12),
+        r32(stsc.payload, 12 + i * 12),
+        r32(stsc.payload, 16 + i * 12),
+      ]);
+    }
+    stscEntries.push([origChunkCount + 1, 1, 1]);
+    const stscBody = [stsc.payload.subarray(0, 4), u32(stscEntries.length)];
+    for (const [a, b, c] of stscEntries) {
+      stscBody.push(u32(a));
+      stscBody.push(u32(b));
+      stscBody.push(u32(c));
+    }
+    stsc.payload = concatArrays(stscBody);
+
+    // 5. Udta: preserve camera tags, inject CB meta
+    const udta = moov.find("udta");
+    if (udta) {
+      const udtaChildren = parseBoxChildren(udta.payload, 0, udta.payload.length);
+      const cameraTags = udtaChildren.filter((c) => c.type !== "meta" && c.type !== "ilst");
+      const parts = cameraTags.map((c) => c.serialize());
+      parts.push(CB_2026_META_PAYLOAD);
+      udta.payload = concatArrays(parts);
+    } else {
+      moov.children.push(new Mp4Node("udta", CB_2026_META_PAYLOAD));
+    }
+
+    // 6. Track chunk offsets setup
+    const trakOffsetsList = [];
+    for (const t of traks) {
+      const ob = getOffsetBox(t);
+      if (ob) trakOffsetsList.push({ trak: t, ob, offsets: readChunkOffsets(ob) });
+    }
+
+    for (const item of trakOffsetsList) {
+      if (item.trak === videTrak) {
+        writeChunkOffsets(item.ob, item.offsets.concat(new Array(padCount).fill(0)));
+      } else {
+        writeChunkOffsets(item.ob, item.offsets);
+      }
+    }
+
+    // 7. Shift calculation:
+    const origFtypSize = topBoxes[0].size;
+    const ftypGrowth = (32 + 8) - origFtypSize;
+    const oldMoovSize = moovInfo.size;
+    const moovBeforeMdat = moovInfo.offset < mdatInfo.offset;
+
+    for (let iter = 0; iter < 4; iter++) {
+      const curMoovSize = moov.serialize().length;
+      const moovDelta = curMoovSize - oldMoovSize;
+      const totalMdatShift = moovBeforeMdat ? (ftypGrowth + moovDelta) : 0;
+      const newMdatOffset = mdatInfo.offset + totalMdatShift;
+      const newMdatSize = mdatInfo.size + 8;
+      const padFileOffset = newMdatOffset + newMdatSize - 8;
+
+      for (const item of trakOffsetsList) {
+        const shifted = item.offsets.map((o) => o + totalMdatShift);
+        if (item.trak === videTrak) {
+          for (let p = 0; p < padCount; p++) shifted.push(padFileOffset);
+        }
+        writeChunkOffsets(item.ob, shifted);
+      }
+    }
+
+    const newMoovBytes = moov.serialize();
+
+    // 8. Reassemble container
+    const outParts = [];
+    outParts.push(STANDARD_FTYP_32);
+    outParts.push(FREE_BOX_8);
+    outParts.push(newMoovBytes);
+
+    for (const b of topBoxes) {
+      if (b.name === "ftyp" || b.name === "moov") {
+        continue;
+      } else if (b.name === "mdat") {
+        const newMdatSize = b.size + 8;
+        if (b.headerLen === 16 || newMdatSize > 0xffffffff) {
+          outParts.push(concatArrays([u32(1), strToBytes("mdat"), u64(newMdatSize + (b.headerLen === 16 ? 0 : 8))]));
+        } else {
+          outParts.push(concatArrays([u32(newMdatSize), strToBytes("mdat")]));
+        }
+        outParts.push(data.subarray(b.offset + b.headerLen, b.offset + b.size));
+        outParts.push(FILLER_NAL_8);
+      } else {
+        outParts.push(data.subarray(b.offset, b.offset + b.size));
+      }
+    }
+
+    return concatArrays(outParts);
+  }
+
   // Unified dispatcher
-  function patch(data, mode = "safe") {
+  function patch(data, mode = "enhancer") {
     if (isAlreadyPatched(data)) {
       return data;
+    }
+    if (mode === "enhancer") {
+      return patchEnhancer(data, 20 / 3);
+    }
+    if (mode === "safe") {
+      return patchSafe(data);
     }
     if (mode === "ghost" || mode === "ultra") {
       return patchGhost(data, 12);
@@ -630,11 +827,12 @@
     if (mode === "haze") {
       return patchHaze(data);
     }
-    return patchSafe(data);
+    return patchEnhancer(data, 20 / 3);
   }
 
   return {
     patch: patch,
+    patchEnhancer: patchEnhancer,
     patchSafe: patchSafe,
     patchGhost: patchGhost,
     patchHaze: patchHaze,

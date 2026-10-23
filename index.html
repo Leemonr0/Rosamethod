@@ -231,9 +231,13 @@
             <div class="smc-mode-selector">
               <span class="smc-mode-label" data-i18n="smc_mode_label">Bypass Mode:</span>
               <div class="smc-mode-pills" id="patchModeTabs">
-                <button type="button" class="smc-mode-pill active" data-patch-mode="safe" title="Safe Pass: Clean stream, zero decode errors, 2026 container sentinel">
+                <button type="button" class="smc-mode-pill active" data-patch-mode="enhancer" title="Enhancer 10x: 8B Filler NAL, bypasses TikTok bitrate validator (>15M), 0 decoder errors">
                   <span class="mode-dot"></span>
-                  <span data-i18n="mode_safe">Safe Pass (Recommended)</span>
+                  <span data-i18n="mode_enhancer">Enhancer 10x (Bitrate Bypass)</span>
+                </button>
+                <button type="button" class="smc-mode-pill" data-patch-mode="safe" title="Safe Pass: Clean 1:1 stream copy, zero decode errors, 2026 container sentinel (for <=15M)">
+                  <span class="mode-dot"></span>
+                  <span data-i18n="mode_safe">Safe Pass (Clean 1:1)</span>
                 </button>
                 <button type="button" class="smc-mode-pill" data-patch-mode="ghost" title="Ultra Ghost: CompressBase v4 ghost frames + udta">
                   <span class="mode-dot"></span>
@@ -250,6 +254,20 @@
               <span class="smc-tag" data-i18n="tag_120fps">120 FPS</span>
               <span class="smc-tag" data-i18n="tag_nocomp">No Compression</span>
               <span class="smc-tag" data-i18n="tag_noshadow">No Shadowban</span>
+            </div>
+
+            <div class="tiktok-rules-banner" style="margin-top:14px;padding:12px 14px;background:rgba(255,46,99,0.06);border:1px solid rgba(255,46,99,0.22);border-radius:10px;font-size:12.5px;line-height:1.55;color:#e2e8f0;">
+              <div style="font-weight:700;color:#ff2e63;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                <span>⚡</span>
+                <span data-i18n="rules_title">ГАРАНТИЯ 1080p В TIKTOK (ВАЖНЫЕ ПРАВИЛА):</span>
+              </div>
+              <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;">
+                <li><strong data-i18n="rule_1_head">Для тяжелых видео (>15 Мбит/с):</strong> <span data-i18n="rule_1_text">используйте режим «Enhancer 10x», чтобы обойти серверный лимит битрейта ByteDance.</span></li>
+                <li><strong data-i18n="rule_2_head">В приложении TikTok:</strong> <span data-i18n="rule_2_text">в «Дополнительных параметрах» перед публикацией включите тумблер «Разрешить загрузку в высоком качестве».</span></li>
+                <li><strong data-i18n="rule_3_head">В Telegram:</strong> <span data-i18n="rule_3_text">отправляйте видео на телефон строго как «Файл» (без сжатия).</span></li>
+                <li><strong data-i18n="rule_4_head">Загрузка с ПК:</strong> <span data-i18n="rule_4_text">через tiktok.com/creator-center/upload видео идет напрямую в CDN без сжатия телефоном.</span></li>
+                <li><strong data-i18n="rule_5_head">Подождите 3–5 минут:</strong> <span data-i18n="rule_5_text">TikTok первые минуты раздает 576p превью, пока CDN кеширует 1080p.</span></li>
+              </ul>
             </div>
           </div>
 

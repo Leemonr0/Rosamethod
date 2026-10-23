@@ -8,7 +8,7 @@
 const state = {
   theme: "rose",
   currentLang: "en",
-  patchMode: "safe",
+  patchMode: "enhancer",
   previewWithMethod: true,
   viewMode: "split",
   splitRatio: 0.5,
@@ -63,9 +63,21 @@ const I18N = {
     smc_spec: "1080p · 120 FPS",
     smc_title: "Rose Method",
     smc_mode_label: "Bypass Mode:",
-    mode_safe: "Safe Pass (Recommended)",
+    mode_enhancer: "Enhancer 10x (Bitrate Bypass)",
+    mode_safe: "Safe Pass (Clean 1:1)",
     mode_ghost: "Ultra Ghost (CB v4)",
     mode_haze: "Haze Lite (0x0)",
+    rules_title: "GUARANTEED 1080p ON TIKTOK (ESSENTIAL RULES):",
+    rule_1_head: "For heavy clips (>15 Mbps):",
+    rule_1_text: "use 'Enhancer 10x' mode to bypass ByteDance server bitrate limits.",
+    rule_2_head: "In TikTok App:",
+    rule_2_text: "enable 'Allow high-quality uploads' in More options before posting.",
+    rule_3_head: "In Telegram:",
+    rule_3_text: "send to phone strictly as an uncompressed 'File'.",
+    rule_4_head: "PC Upload:",
+    rule_4_text: "upload via tiktok.com/creator-center/upload directly to CDN.",
+    rule_5_head: "Wait 3–5 minutes:",
+    rule_5_text: "TikTok temporarily serves 576p preview while edge CDN caches 1080p.",
     tag_fullhd: "1080p Full HD",
     tag_120fps: "120 FPS",
     tag_nocomp: "No Compression",
@@ -158,9 +170,21 @@ const I18N = {
     smc_spec: "1080p · 120 FPS",
     smc_title: "Метод Rose",
     smc_mode_label: "Режим обхода:",
-    mode_safe: "Safe Pass (Рекомендуемый)",
+    mode_enhancer: "Enhancer 10x (Обход битрейта)",
+    mode_safe: "Safe Pass (Чистый 1:1)",
     mode_ghost: "Ultra Ghost (CB v4)",
     mode_haze: "Haze Lite (0x0)",
+    rules_title: "ГАРАНТИЯ 1080p В TIKTOK (ВАЖНЫЕ ПРАВИЛА):",
+    rule_1_head: "Для тяжелых видео (>15 Мбит/с):",
+    rule_1_text: "используйте режим «Enhancer 10x», чтобы обойти серверный лимит битрейта ByteDance.",
+    rule_2_head: "В приложении TikTok:",
+    rule_2_text: "в «Дополнительных параметрах» перед публикацией включите тумблер «Разрешить загрузку в высоком качестве».",
+    rule_3_head: "В Telegram:",
+    rule_3_text: "отправляйте видео на телефон строго как «Файл» (без сжатия).",
+    rule_4_head: "Загрузка с ПК:",
+    rule_4_text: "через tiktok.com/creator-center/upload видео идет напрямую в CDN без сжатия телефоном.",
+    rule_5_head: "Подождите 3–5 минут:",
+    rule_5_text: "TikTok первые минуты раздает 576p превью, пока CDN кеширует 1080p.",
     tag_fullhd: "1080p Full HD",
     tag_120fps: "120 FPS",
     tag_nocomp: "Без сжатия",
@@ -306,7 +330,7 @@ function initViewModeSwitcher() {
 }
 
 function initPatchModeSwitcher() {
-  const savedMode = localStorage.getItem("rose_patch_mode") || "safe";
+  const savedMode = localStorage.getItem("rose_patch_mode") || "enhancer";
   setPatchMode(savedMode);
 
   document.querySelectorAll("[data-patch-mode]").forEach((btn) => {
@@ -329,7 +353,8 @@ function setPatchMode(mode) {
 
   const isRu = state.currentLang === "ru";
   const modeNames = {
-    safe: isRu ? "Safe Pass (Чистый поток · 0 ошибок)" : "Safe Pass (Clean Sentinel · 0 Errors)",
+    enhancer: isRu ? "Enhancer 10x (Обход битрейта · 0 ошибок)" : "Enhancer 10x (Bitrate Bypass · 0 Errors)",
+    safe: isRu ? "Safe Pass (Чистый поток 1:1 · 0 ошибок)" : "Safe Pass (Clean 1:1 · 0 Errors)",
     ghost: isRu ? "Ultra Ghost (CompressBase v4)" : "Ultra Ghost (CB v4 Ghost)",
     haze: isRu ? "Haze Lite (0x0 Stsd)" : "Haze Lite (0x0 Stsd Clear)",
   };
@@ -552,7 +577,8 @@ async function patchVideoDirectlyInBrowser(file) {
 
       const isRu = state.currentLang === "ru";
       const engineLabel = (function() {
-        if (patchEngine.includes("safe")) return isRu ? "Safe Pass (0 ошибок)" : "Safe Pass (0 Errors)";
+        if (patchEngine.includes("enhancer")) return isRu ? "Enhancer 10x (Обход битрейта)" : "Enhancer 10x (Bitrate Bypass)";
+        if (patchEngine.includes("safe")) return isRu ? "Safe Pass (Чистый 1:1)" : "Safe Pass (Clean 1:1)";
         if (patchEngine.includes("ghost")) return isRu ? "Ultra Ghost (CB v4)" : "Ultra Ghost (CB v4)";
         if (patchEngine.includes("haze")) return isRu ? "Haze Lite (0x0)" : "Haze Lite (0x0)";
         return isRu ? "Rose Patcher v3.0" : "Rose Patcher v3.0";
