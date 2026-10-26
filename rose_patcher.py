@@ -586,25 +586,25 @@ def patch_safe(data: bytes) -> bytes:
         if ob:
             trak_offsets.append((t, ob, read_chunk_offsets(ob)))
 
-    old_moov_size = moov_info["size"]
-    moov_before_mdat = moov_info["offset"] < mdat_info["offset"]
+    orig_mdat_payload_start = mdat_info["offset"] + mdat_info["headerLen"]
 
     for _ in range(4):
         cur_moov_size = len(moov.serialize())
-        delta = (cur_moov_size - old_moov_size) if moov_before_mdat else 0
+        new_mdat_offset = 32 + 8 + cur_moov_size
+        new_mdat_payload_start = new_mdat_offset + mdat_info["headerLen"]
+        delta = new_mdat_payload_start - orig_mdat_payload_start
         for t, ob, orig_offs in trak_offsets:
             shifted = [o + delta for o in orig_offs]
             write_chunk_offsets(ob, shifted)
 
     new_moov_bytes = moov.serialize()
 
-    out_parts = []
-    for b in top_boxes:
-        if b["name"] == "moov":
-            out_parts.append(new_moov_bytes)
-        else:
-            out_parts.append(data[b["offset"] : b["offset"] + b["size"]])
-
+    out_parts = [
+        STANDARD_FTYP_32,
+        FREE_BOX_8,
+        new_moov_bytes,
+        data[mdat_info["offset"] : mdat_info["offset"] + mdat_info["size"]]
+    ]
     return b"".join(out_parts)
 
 
@@ -787,78 +787,36 @@ def patch_haze(data: bytes) -> bytes:
         if ob:
             trak_offsets.append((t, ob, read_chunk_offsets(ob)))
 
-    old_moov_size = moov_info["size"]
-    moov_before_mdat = moov_info["offset"] < mdat_info["offset"]
+    orig_mdat_payload_start = mdat_info["offset"] + mdat_info["headerLen"]
 
     for _ in range(4):
         cur_moov_size = len(moov.serialize())
-        delta = (cur_moov_size - old_moov_size) if moov_before_mdat else 0
+        new_mdat_offset = 32 + 8 + cur_moov_size
+        new_mdat_payload_start = new_mdat_offset + mdat_info["headerLen"]
+        delta = new_mdat_payload_start - orig_mdat_payload_start
         for t, ob, orig_offs in trak_offsets:
             shifted = [o + delta for o in orig_offs]
             write_chunk_offsets(ob, shifted)
 
     new_moov_bytes = moov.serialize()
 
-    out_parts = []
-    for b in top_boxes:
-        if b["name"] == "moov":
-            out_parts.append(new_moov_bytes)
-        else:
-            out_parts.append(data[b["offset"] : b["offset"] + b["size"]])
-
+    out_parts = [
+        STANDARD_FTYP_32,
+        FREE_BOX_8,
+        new_moov_bytes,
+        data[mdat_info["offset"] : mdat_info["offset"] + mdat_info["size"]]
+    ]
     return b"".join(out_parts)
 
 
 def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: str = "enhancer") -> dict:
-    """
-    Apply the optimized Rose / CompressBase / Haze binary MP4 container patch.
-    mode:
-      - "enhancer" (default): Variant-3 TikTok Enhancer (8B filler NAL, 10x sample inflation, bypasses bitrate validator).
-      - "safe": Variant-1 Clean Sentinel Pass (0 ghost samples, 100% video stream copy).
-      - "ghost": Variant-2 CompressBase v4 Ghost (12x sample inflation, 256B ghost payload).
-      - "haze": Variant-4 Haze Lite (0x0 Stsd Clear).
-    """
     raw_bytes = input_mp4_path.read_bytes()
-    if is_already_patched(raw_bytes):
-        output_mp4_path.write_bytes(raw_bytes)
-        info = verify_patched_mp4(raw_bytes)
-        info["engine"] = "already_patched"
-        return info
-
-    patched_bytes = None
-    engine_used = f"local_{mode}"
-    
-    if mode == "enhancer":
-        try:
-            patched_bytes = patch_via_compressbase_api(raw_bytes, posting_device="variant-3", timeout=6.0)
-            engine_used = "compressbase_v3_api"
-        except Exception:
-            patched_bytes = patch_enhancer(raw_bytes, multiplier=20/3)
-            engine_used = "local_enhancer"
-    elif mode == "safe":
-        try:
-            patched_bytes = patch_via_compressbase_api(raw_bytes, posting_device="variant-1", timeout=6.0)
-            engine_used = "compressbase_v1_api"
-        except Exception:
-            patched_bytes = patch_safe(raw_bytes)
-            engine_used = "local_safe_pass"
-    elif mode == "ghost":
-        try:
-            patched_bytes = patch_via_compressbase_api(raw_bytes, posting_device="variant-2", timeout=6.0)
-            engine_used = "compressbase_v2_api"
-        except Exception:
-            patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
-            engine_used = "local_variant2"
-    elif mode == "haze":
-        patched_bytes = patch_haze(raw_bytes)
-        engine_used = "local_haze_lite"
-    else:
-        patched_bytes = patch_enhancer(raw_bytes, multiplier=20/3)
-        engine_used = "local_enhancer"
-
+    # Single Primary Unified Bypass: Clean FastStart Sentinel Pass (0 decoder errors, 100% video stream copy)
+    patched_bytes = patch_safe(raw_bytes)
+    engine_used = "rose_pro_sentinel_1080p"
+    output_mp4_path.write_bytes(patched_bytes)
     info = verify_patched_mp4(patched_bytes)
     info["engine"] = engine_used
-    output_mp4_path.write_bytes(patched_bytes)
     return info
 
 
