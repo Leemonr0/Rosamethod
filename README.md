@@ -1,32 +1,74 @@
-# ROSE — TikTok 1080p 120FPS Quality Bypass (Web & Online)
+# 🌹 ROSE METHOD PRO — TikTok 1080p Quality Bypass (Web & Batch)
 
-100% standalone web service designed to bypass TikTok server-side video compression up to 1080p 120 FPS (Lossless 1:1 stream-copy + container normalization).
-
-Runs **directly in the browser** online on **GitHub Pages** (no Python or local server required).
-
----
-
-## 🌐 Online Deployment (GitHub Pages)
-
-The website is fully client-side and requires zero backend:
-1. **Client-side Lossless Processing:** Executes in ~0.3s directly inside the browser using modern Web APIs (`rose_patcher.js`). No video is uploaded to third-party servers, 0% quality loss, and instant automatic downloads.
-2. **TikTok Video Checker & Downloader:** Inspects stream signals and offers multi-quality downloads (1080p HD no watermark, 720p SD, MP3 audio, watermarked video).
-
-### How to publish to GitHub Pages:
-1. Push the contents of this repository to GitHub.
-2. Go to **Settings** ➔ **Pages**.
-3. Under **Build and deployment**:
-   - **Source:** select **Deploy from a branch**
-   - **Branch:** select `main` (or `master`) and folder `/(root)`
-   - Click **Save**.
-4. In under a minute your site will be live at:  
-   `https://<your-username>.github.io/<your-repo>/`
+> **Официальный репозиторий единого метода сохранения 1080p без сжатия TikTok.**  
+> **Онлайн-версия (GitHub Pages):** [https://leemonr0.github.io/Rosamethod/](https://leemonr0.github.io/Rosamethod/)
 
 ---
 
-## 💻 Local Run (Optional)
+## ⚡ Описание метода
 
-If you prefer running a local server with FFmpeg support:
-1. Double click `START_ENCODEX_STUDIO.bat` (or execute `python app.py`).
-2. Open in your browser: `http://127.0.0.1:5050`.
+**Rose Method Pro (v4.0.0)** — специализированный инструмент для обхода алгоритмов серверного сжатия TikTok (ByteDance transcode cluster `Lavf59.27.100`), который предотвращает принудительный даунскейл роликов в **576p / 720p и 30 FPS**.
 
+Метод основан на прямом манипулировании MP4 атомами на бинарном уровне (**Lossless Stream-Copy**):
+1. **Universal FastStart Reordering:** Гарантированное размещение атома `moov` в начале файла (`[ftyp, free, moov, mdat]`). TikTok мгновенно начинает потоковую верификацию без кэширования всего файла.
+2. **Sentinel v1 Duration Sentinel:** Внедрение специального значения `0xFFFFFFFFFFFFFFFF` в `mvhd`, предотвращающего срабатывание встроенного расчета битрейта серверов TikTok.
+3. **Apple iPhone 16 Pro Metadata Injection:** Вшивание нативных метаданных съемки Apple Core Media (`©TIM`, `©TSC`, `©TSZ`, Apple hardware tags), что повышает доверие алгоритма валидации.
+4. **Universal Chunk Offset Realignment:** Математически точный пересчет всех чанков (`stco` / `co64`) для видео и аудио (0 ошибок декодирования в FFmpeg / QuickTime / Android).
+
+---
+
+## ⚠️ Критические правила для публикации в TikTok (Почему видео сжимается в 576p и 30 FPS)
+
+1. **Частота кадров — СТРОГО ДО 60 FPS:**
+   - Серверы TikTok аппаратно **НЕ поддерживают 120 FPS**.
+   - Если залить видео с частотой 120 FPS, валидатор TikTok автоматически делит частоту кадров и **принудительно перекодирует весь ролик в 30 FPS и 576p**!
+   - Экспортируйте видео из монтажки строго в **60 FPS** (или используйте `DRAG_AND_DROP_BYPASS.bat`).
+2. **Соотношение сторон — 9:16 (1080x1920):**
+   - TikTok создан для вертикальных роликов. Горизонтальные видео 16:9 (1920x1080) сервер обрезает и пережимает в 576p.
+3. **Настройки экспорта в монтажке (CapCut, Premiere Pro, After Effects):**
+   - **Разрешение:** 1080 × 1920 (вертикально)
+   - **Частота кадров:** 60 FPS (CFR — постоянная)
+   - **Кодек:** H.264 (AVC)
+   - **Профиль:** High Profile, Level 4.2
+   - **Битрейт:** 15–20 Мбит/с (CBR или VBR 1-pass)
+   - **Цветовое пространство:** Rec.709 (BT.709)
+4. **Настройки публикации в приложении TikTok:**
+   - Перед публикацией в TikTok откройте `Дополнительные параметры` (More options).
+   - Включите тумблер **«Разрешить загрузку в высоком качестве»** (Allow high-quality uploads).
+   - Первые 2–3 минуты после публикации TikTok всегда отдает 576p превью. Через 3–5 минут CDN переключается на полный 1080p поток.
+
+---
+
+## 🚀 Способы использования
+
+### Способ 1: Онлайн в браузере (GitHub Pages)
+
+Откройте сайт: **[https://leemonr0.github.io/Rosamethod/](https://leemonr0.github.io/Rosamethod/)**
+1. Перетащите видео в окно браузера.
+2. Встроенный анализатор проверит FPS и разрешение:
+   - Если ролик в 60 FPS — патчер за 2 секунды пересоберет контейнер с FastStart и Apple-метаданными.
+   - Если обнаружен 120 FPS или 16:9 — появится предупреждение с рекомендацией.
+3. Скачивание защищенного файла начнется автоматически.
+
+### Способ 2: Быстрый запуск на ПК (`DRAG_AND_DROP_BYPASS.bat`)
+
+Для автоматической конвертации любого видео (даже 120 FPS или 16:9):
+1. Скачайте репозиторий или файл `DRAG_AND_DROP_BYPASS.bat`.
+2. Просто **перетащите ваш видеофайл мышкой прямо на `DRAG_AND_DROP_BYPASS.bat`**.
+3. Скрипт автоматически:
+   - Нормализует частоту до идеальных **60 FPS CFR**.
+   - Кадрирует в вертикальный формат **1080x1920**.
+   - Выставит битрейт под лимит VBV 14.5 Мбит/с.
+   - Применит FastStart Sentinel патч с Apple Core Media тегами.
+   - Сохранит готовый к заливке файл `IMG_xxxx_rose_1080p60.mp4` в ту же папку.
+
+---
+
+## 🛠 Структура репозитория
+
+- `index.html` — Одностраничный интерфейс (Dark Glassmorphism, 1080p 60/120 FPS монитор, TikTok URL checker).
+- `app.js` — Контроллер веб-приложения с онлайн-инспекцией MP4 атомов и анимацией этапов обработки.
+- `rose_patcher.js` — Клиентский движок MP4 атомов (FastStart, mvhd sentinel v1, chunk offset realigner).
+- `rose_patcher.py` — Python CLI аналог патчера для оффлайн-скриптов и терминала.
+- `DRAG_AND_DROP_BYPASS.bat` — Windows Drag-and-Drop конвертер в 60 FPS CFR 1080p с автоматическим патчем.
+- `style.css` — Стилизация интерфейса с диагностическими плашками и адаптивной версткой.
