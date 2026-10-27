@@ -263,14 +263,18 @@ def write_chunk_offsets(offs_box: Mp4Node, offsets: list[int]) -> None:
 
 def patch_local_variant2(data: bytes, ghost_multiplier: int = 12) -> bytes:
     """
-    Pure-Python local implementation of CompressBase `variant-2` binary MP4 patch:
-    1. Upgrades `mvhd` to v1 with `duration = 0xFFFFFFFFFFFFFFFF`.
-    2. Modifies `vide` track `stts` (decrements last sample count by 1 and appends `(1, 0)`).
-    3. Appends `ghost_multiplier * N` (`12 * N`) 256-byte ghost samples to `vide` `stsz`.
-    4. Appends `(orig_chunks + 1, 1, 1)` to `vide` `stsc`.
-    5. Shifts all track `stco` offsets by the exact `moov` size growth delta and appends `12 * N`
-       chunk offsets pointing to the 256-byte ghost payload appended at the end of `mdat`.
-    6. Writes the exact CompressBase `udta` box and `ZILEM_OPTIMIZED/1` tail box.
+    Pure-Python local implementation of CompressBase variant-2 binary MP4 patch:
+    1. Upgrades mvhd to v1 with duration = 0xFFFFFFFFFFFFFFFF.
+    2. Modifies vide track stts (decrements last sample count by 1 and appends (1, 0)).
+    3. Appends ghost_multiplier * N (12 * N) 256-byte ghost samples to vide stsz.
+    4. Appends (orig_chunks + 1, 1, 1) to vide stsc.
+    5. Universal FastStart shift calculation:
+       Always positions moov at offset 32 (immediately after ftyp) and shifts all
+       track chunk offsets by delta = new_mdat_payload_start - orig_mdat_payload_start.
+       All ghost chunks point to the 256-byte ghost payload appended at the end of mdat.
+    6. Assembles strict FastStart container:
+       [STANDARD_FTYP_32, new_moov_bytes, FREE_BOX_8, new_mdat, tail_box]
+       matching benchmark video 7695876470861729046 (0.43 Mbps bypass -> 1080p 120 FPS).
     """
     top_boxes = inspect_top_boxes(data)
     moovs = [b for b in top_boxes if b["name"] == "moov"]
@@ -340,13 +344,13 @@ def patch_local_variant2(data: bytes, ghost_multiplier: int = 12) -> bytes:
     else:
         moov.children.append(Mp4Node("udta", CB_META_BOX, None))
 
-    # 5. Iteratively compute exact moov size delta and shift all chunk offsets
+    # 5. Shift all chunk offsets with universal FastStart layout:
+    # Strict layout: [STANDARD_FTYP_32 (32B), new_moov_bytes, FREE_BOX_8 (8B), new_mdat, tail_box]
     trak_orig_offsets = []
     for t in traks:
         ob = get_offset_box(t)
         trak_orig_offsets.append((t, ob, read_chunk_offsets(ob) if ob else []))
 
-    # Placeholder write to get serialized moov length
     for t, ob, orig_offs in trak_orig_offsets:
         if not ob:
             continue
@@ -355,14 +359,17 @@ def patch_local_variant2(data: bytes, ghost_multiplier: int = 12) -> bytes:
         else:
             write_chunk_offsets(ob, orig_offs)
 
-    old_moov_size = moov_info["size"]
-    moov_before_mdat = moov_info["offset"] < mdat_info["offset"]
+    orig_mdat_payload_start = mdat_info["offset"] + mdat_info["headerLen"]
+    orig_mdat_payload_len = mdat_info["size"] - mdat_info["headerLen"]
+    new_mdat_payload_len = orig_mdat_payload_len + len(GHOST_PAYLOAD_256)
+    new_mdat_hdr_len = 16 if (mdat_info["headerLen"] == 16 or (new_mdat_payload_len + 8 > 0xFFFFFFFF)) else 8
 
     for _ in range(4):
-        new_moov_size = len(moov.serialize())
-        delta = (new_moov_size - old_moov_size) if moov_before_mdat else 0
-        # The 256-byte ghost payload sits at the end of the original mdat payload
-        ghost_file_offset = mdat_info["offset"] + delta + mdat_info["size"]
+        cur_moov_size = len(moov.serialize())
+        new_mdat_offset = 32 + cur_moov_size + 8
+        new_mdat_payload_start = new_mdat_offset + new_mdat_hdr_len
+        delta = new_mdat_payload_start - orig_mdat_payload_start
+        ghost_file_offset = new_mdat_payload_start + orig_mdat_payload_len
         for t, ob, orig_offs in trak_orig_offsets:
             if not ob:
                 continue
@@ -373,32 +380,25 @@ def patch_local_variant2(data: bytes, ghost_multiplier: int = 12) -> bytes:
 
     new_moov_bytes = moov.serialize()
 
-    # 6. Assemble final MP4 with updated mdat (+256B ghost) and 69B ZILEM free tail
-    out_parts = []
-    for b in top_boxes:
-        bname = b["name"]
-        boff = b["offset"]
-        bsz = b["size"]
-        bhdr = b["headerLen"]
-        if bname == "moov":
-            out_parts.append(new_moov_bytes)
-        elif bname == "mdat":
-            new_mdat_size = bsz + len(GHOST_PAYLOAD_256)
-            if bhdr == 16 or new_mdat_size > 0xFFFFFFFF:
-                mdat_hdr = u32(1) + b"mdat" + u64(new_mdat_size if bhdr == 16 else new_mdat_size + 8)
-            else:
-                mdat_hdr = u32(new_mdat_size) + b"mdat"
-            out_parts.append(mdat_hdr)
-            out_parts.append(data[boff + bhdr : boff + bsz])
-            out_parts.append(GHOST_PAYLOAD_256)
-        else:
-            out_parts.append(data[boff : boff + bsz])
+    if new_mdat_hdr_len == 16:
+        new_mdat_hdr = u32(1) + b"mdat" + u64(new_mdat_payload_len + 16)
+    else:
+        new_mdat_hdr = u32(new_mdat_payload_len + 8) + b"mdat"
 
     tail_payload = b"ZILEM_OPTIMIZED/1 2026-10-03T03:46:48.570Z 1001 (2)_zilem.mp4"
     tail_box = u32(len(tail_payload) + 8) + b"free" + tail_payload
-    out_parts.append(tail_box)
 
+    out_parts = [
+        STANDARD_FTYP_32,
+        new_moov_bytes,
+        FREE_BOX_8,
+        new_mdat_hdr,
+        data[mdat_info["offset"] + mdat_info["headerLen"] : mdat_info["offset"] + mdat_info["size"]],
+        GHOST_PAYLOAD_256,
+        tail_box
+    ]
     return b"".join(out_parts)
+
 
 
 def patch_via_compressbase_api(data: bytes, posting_device: str = "variant-2", timeout: float = 8.0) -> bytes:
@@ -809,11 +809,21 @@ def patch_haze(data: bytes) -> bytes:
     return b"".join(out_parts)
 
 
-def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: str = "enhancer") -> dict:
+def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: str = "ghost") -> dict:
     raw_bytes = input_mp4_path.read_bytes()
-    # Single Primary Unified Bypass: Clean FastStart Sentinel Pass (0 decoder errors, 100% video stream copy)
-    patched_bytes = patch_safe(raw_bytes)
-    engine_used = "rose_pro_sentinel_1080p"
+    if mode in ("ghost", "enhancer", "variant-2"):
+        try:
+            patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
+            engine_used = "rose_ghost_120fps_bypass"
+        except Exception as e:
+            patched_bytes = patch_safe(raw_bytes)
+            engine_used = "rose_safe_sentinel_fallback"
+    elif mode == "safe":
+        patched_bytes = patch_safe(raw_bytes)
+        engine_used = "rose_pro_sentinel_1080p"
+    else:
+        patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
+        engine_used = "rose_ghost_120fps_bypass"
     output_mp4_path.write_bytes(patched_bytes)
     info = verify_patched_mp4(patched_bytes)
     info["engine"] = engine_used
@@ -825,7 +835,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Rose MP4 Binary Container Patcher")
     parser.add_argument("input", help="Path to input MP4 video")
     parser.add_argument("output", help="Path to output patched MP4 video")
-    parser.add_argument("--mode", default="enhancer", choices=["enhancer", "safe", "ghost", "haze"], help="Patch mode")
+    parser.add_argument("--mode", default="ghost", choices=["enhancer", "safe", "ghost", "haze"], help="Patch mode")
     args = parser.parse_args()
 
     res = apply_rose_binary_patch(Path(args.input), Path(args.output), mode=args.mode)

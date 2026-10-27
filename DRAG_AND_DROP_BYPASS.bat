@@ -66,7 +66,7 @@ echo.
 echo [*] Этап 2: Бинарный патч контейнера Rose Pro (FastStart Sentinel + 0 ошибок)...
 set "PATCHER_PY=%~dp0rose_patcher.py"
 if not exist "%PATCHER_PY%" set "PATCHER_PY=C:\Users\zurbi\.gemini\antigravity\scratch\encodex-base\GITHUB_REPO\rose_patcher.py"
-python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%" --mode safe
+python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%" --mode ghost
 
 if exist "%STAGE1_TEMP%" del /f /q "%STAGE1_TEMP%"
 

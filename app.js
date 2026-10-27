@@ -563,12 +563,12 @@ async function patchVideoDirectlyInBrowser(file) {
 
     // Stage 3: Apply single unified Rose Pro Sentinel patch (0 decoder errors, 100% video stream copy)
     if (bar) bar.style.width = "75%";
-    if (speedEl) speedEl.textContent = "SENTINEL INJECT";
+    if (speedEl) speedEl.textContent = "GHOST 120FPS";
     setStatusText(isRu ? "Этап 3/4: Применение защиты Rose Pro (mvhd duration sentinel v1 + Apple metadata)..." : "Stage 3/4: Injecting Rose Pro mvhd duration sentinel v1 & Apple metadata...");
     
     let patchedBytes = null;
     if (window.RosePatcher && typeof window.RosePatcher.patch === "function") {
-      patchedBytes = window.RosePatcher.patch(uint8, "safe");
+      patchedBytes = (typeof window.RosePatcher.patchGhost === "function") ? window.RosePatcher.patchGhost(uint8, 12) : window.RosePatcher.patch(uint8, "ghost");
     } else if (window.RosePatcher && typeof window.RosePatcher.patchSafe === "function") {
       patchedBytes = window.RosePatcher.patchSafe(uint8);
     } else {
