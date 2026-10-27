@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title Rose Method Pro - TikTok 1080p Quality Bypass
 echo ===========================================================================
-echo   ROSE METHOD PRO // 100%% ОБХОД СЖАТИЯ TIKTOK (1080p БЕЗ 576p / 1024p)
+echo   ROSA PRO // 100%% ОБХОД СЖАТИЯ TIKTOK (1080p 120FPS БЕЗ 576p / 1024p)
 echo ===========================================================================
 if "%~1"=="" (
     echo.
@@ -14,7 +14,7 @@ if "%~1"=="" (
 
 set "SRC_FILE=%~1"
 set "STAGE1_TEMP=%~dp1temp_stage1_%RANDOM%.mp4"
-set "FINAL_OUT=%~dp1IMG_%RANDOM%_rose_1080p.mp4"
+set "FINAL_OUT=%~dp1IMG_%RANDOM%_rosa_1080p.mp4"
 
 echo [*] Входной файл: "%~nx1"
 echo [*] Поиск FFmpeg...
@@ -46,26 +46,7 @@ if "%ASPECT_CHOICE%"=="2" (
 )
 
 echo.
-echo ===========================================================================
-echo  ВЫБЕРИТЕ МЕТОД ОБХОДА TIKTOK:
-echo  [1] Haze Max (Audio Ghost 10x + 0x0 Stsd - КАК В PULSE_HAZE) - РЕКОМЕНДУЕТСЯ
-echo  [2] Rosa 2.0 (CompressBase Cloud API v1 Patch)
-echo  [3] Rosa 1.0 (Local FastStart Ghost Sentinel 120 FPS) - 100%% ОФФЛАЙН
-echo ===========================================================================
-choice /c 123 /t 5 /d 1 /m "Ваш выбор метода (через 5 сек автовыбор 1): "
-set "METHOD_CHOICE=%errorlevel%"
-
-if "%METHOD_CHOICE%"=="3" (
-    set "PATCH_MODE=ghost"
-    echo [*] Выбран метод: Rosa 1.0 Local (FastStart Ghost 120 FPS)
-) else if "%METHOD_CHOICE%"=="2" (
-    set "PATCH_MODE=cb"
-    echo [*] Выбран метод: Rosa 2.0 Pro (CompressBase Cloud API v1)
-) else (
-    set "PATCH_MODE=haze"
-    echo [*] Выбран метод: Haze Max (Pulse Haze 0x0 Stsd + Audio Track 3)
-)
-
+echo [*] Движок: Rosa Pro Engine (0x0 Stsd + FastStart Sentinel + Audio Ghost)...
 echo [*] Нормализация профиля и таймкодов Core Media...
 echo.
 
@@ -83,17 +64,17 @@ if not exist "%STAGE1_TEMP%" (
 )
 
 echo.
-echo [*] Этап 2: Бинарный патч контейнера (%PATCH_MODE% FastStart Sentinel)...
+echo [*] Этап 2: Бинарный патч контейнера движком Rosa Pro (1080p 120 FPS)...
 set "PATCHER_PY=%~dp0rose_patcher.py"
 if not exist "%PATCHER_PY%" set "PATCHER_PY=C:\Users\zurbi\.gemini\antigravity\scratch\encodex-base\GITHUB_REPO\rose_patcher.py"
-python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%" --mode %PATCH_MODE%
+python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%"
 
 if exist "%STAGE1_TEMP%" del /f /q "%STAGE1_TEMP%"
 
 echo.
 if exist "%FINAL_OUT%" (
     echo ===========================================================================
-    echo   [OK] ГОТОВО! ВИДЕО ЗАЩИЩЕНО ОТ СЖАТИЯ В 576p / 1024p 30FPS:
+    echo   [OK] ГОТОВО! ВИДЕО ЗАЩИЩЕНО ДВИЖКОМ ROSA PRO:
     echo        "%FINAL_OUT%"
     echo.
     echo   ВАЖНЫЕ ПРАВИЛА ДЛЯ ПУБЛИКАЦИИ:
