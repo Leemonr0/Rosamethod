@@ -544,7 +544,173 @@
     return concatArrays(outParts);
   }
 
+    // =========================================================================
+  // Haze Max Method: 0x0 Stsd Clear + Audio Track 3 Inflation (pulse_haze.mp4)
+  // Exact replica of https://hazemethod.xyz | Haze Max engine
+  // =========================================================================
+  const DUMMY_AAC_8 = new Uint8Array([0, 0, 0, 4, 0, 0, 0, 0]);
+  const DUMMY_COUNT = 4194;
+  const HAZE_MAX_UDTA_PAYLOAD = concatArrays([
+    u32(130), strToBytes("meta"), u32(0),
+    u32(33), strToBytes("hdlr"), u32(0), u32(0), strToBytes("mdir"), new Uint8Array(12),
+    u32(85), strToBytes("ilst"),
+    u32(77), new Uint8Array([0xa9, 0x74, 0x6f, 0x6f]),
+    u32(69), strToBytes("data"), u32(1), u32(0),
+    strToBytes("Haze Quality Method https://hazemethod.xyz | Haze Max")
+  ]);
+
+  function patchHazeMax(data) {
+    const topBoxes = inspectTopBoxes(data);
+    const moovInfo = topBoxes.find((b) => b.name === "moov");
+    const mdatInfo = topBoxes.find((b) => b.name === "mdat");
+    if (!moovInfo || !mdatInfo) throw new Error("Missing moov or mdat.");
+
+    const moovChildren = parseBoxChildren(data, moovInfo.offset + moovInfo.headerLen, moovInfo.offset + moovInfo.size);
+    const moov = new Mp4Node("moov", null, moovChildren);
+
+    // 1. Upgrade mvhd sentinel v1
+    const mvhd = moov.find("mvhd");
+    if (!mvhd) throw new Error("Missing mvhd.");
+    mvhd.payload = upgradeMvhd(mvhd.payload);
+
+    // 2. Video track: clear stsd dimensions to 0x0
+    const traks = moov.findAll("trak");
+    let videTrak = null;
+    let sounTrak = null;
+    for (const t of traks) {
+      const hdlr = t.path("mdia", "hdlr");
+      if (hdlr && hdlr.payload.length >= 12) {
+        const handler = bytesToStr(hdlr.payload.subarray(8, 12));
+        if (handler === "vide") videTrak = t;
+        if (handler === "soun" && !sounTrak) sounTrak = t;
+      }
+    }
+    if (!videTrak) throw new Error("Missing video track.");
+
+    const stsd = videTrak.path("mdia", "minf", "stbl", "stsd");
+    if (stsd && stsd.payload.length >= 44) {
+      stsd.payload[40] = 0; stsd.payload[41] = 0;
+      stsd.payload[42] = 0; stsd.payload[43] = 0;
+    }
+
+    // 3. Clone audio track as Track 3 with 10x sample inflation
+    if (sounTrak) {
+      const sounBytes = sounTrak.serialize();
+      const sounCloneChildren = parseBoxChildren(sounBytes, 8, sounBytes.length);
+      const trak3 = new Mp4Node("trak", null, sounCloneChildren);
+
+      const tkhd3 = trak3.find("tkhd");
+      if (tkhd3 && tkhd3.payload.length >= 20) {
+        const ver = tkhd3.payload[0];
+        const off = ver === 0 ? 12 : 16;
+        tkhd3.payload.set(u32(3), off);
+      }
+
+      const stts3 = trak3.path("mdia", "minf", "stbl", "stts");
+      if (stts3) {
+        const cnt = r32(stts3.payload, 4);
+        const entries = [];
+        for (let i = 0; i < cnt; i++) entries.push([r32(stts3.payload, 8 + i * 8), r32(stts3.payload, 12 + i * 8)]);
+        entries.push([DUMMY_COUNT, 1]);
+        const b = [stts3.payload.subarray(0, 4), u32(entries.length)];
+        for (const [c, d] of entries) { b.push(u32(c)); b.push(u32(d)); }
+        stts3.payload = concatArrays(b);
+      }
+
+      const stsc3 = trak3.path("mdia", "minf", "stbl", "stsc");
+      const ob3 = getOffsetBox(trak3);
+      const origOffs3 = ob3 ? readChunkOffsets(ob3) : [];
+      const lastChunkIdx = origOffs3.length;
+      if (stsc3 && lastChunkIdx > 0) {
+        const scCnt = r32(stsc3.payload, 4);
+        const scEntries = [];
+        for (let i = 0; i < scCnt; i++) scEntries.push([r32(stsc3.payload, 8 + i * 12), r32(stsc3.payload, 12 + i * 12), r32(stsc3.payload, 16 + i * 12)]);
+        scEntries.push([lastChunkIdx, 1 + DUMMY_COUNT, 1]);
+        const b = [stsc3.payload.subarray(0, 4), u32(scEntries.length)];
+        for (const [x, y, z] of scEntries) { b.push(u32(x)); b.push(u32(y)); b.push(u32(z)); }
+        stsc3.payload = concatArrays(b);
+      }
+
+      const stsz3 = trak3.path("mdia", "minf", "stbl", "stsz");
+      if (stsz3) {
+        const sFixed = r32(stsz3.payload, 4);
+        const sCnt = r32(stsz3.payload, 8);
+        const sSizes = [];
+        if (sFixed !== 0) {
+          for (let i = 0; i < sCnt; i++) sSizes.push(sFixed);
+        } else {
+          for (let i = 0; i < sCnt; i++) sSizes.push(r32(stsz3.payload, 12 + i * 4));
+        }
+        for (let i = 0; i < DUMMY_COUNT; i++) sSizes.push(8);
+        const b = [stsz3.payload.subarray(0, 4), u32(0), u32(sSizes.length)];
+        for (const s of sSizes) b.push(u32(s));
+        stsz3.payload = concatArrays(b);
+      }
+
+      moov.children.push(trak3);
+    }
+
+    // 4. UDTA Haze Max
+    const udta = moov.find("udta");
+    if (udta) {
+      moov.children = moov.children.filter((c) => c.type !== "udta");
+    }
+    moov.children.push(new Mp4Node("udta", HAZE_MAX_UDTA_PAYLOAD));
+
+    // 5. Shift all chunk offsets in strict FastStart layout
+    const allTraks = moov.findAll("trak");
+    const trakOffsetsList = [];
+    for (const t of allTraks) {
+      const ob = getOffsetBox(t);
+      if (ob) trakOffsetsList.push({ trak: t, ob, offsets: readChunkOffsets(ob) });
+    }
+
+    const dummyPayloadBytes = new Uint8Array(DUMMY_COUNT * 8);
+    for (let i = 0; i < DUMMY_COUNT; i++) dummyPayloadBytes.set(DUMMY_AAC_8, i * 8);
+
+    const origMdatPayloadStart = mdatInfo.offset + mdatInfo.headerLen;
+    const origMdatPayloadLen = mdatInfo.size - mdatInfo.headerLen;
+    const newMdatPayloadLen = origMdatPayloadLen + (sounTrak ? dummyPayloadBytes.length : 0);
+    const newMdatHeaderLen = (mdatInfo.headerLen === 16 || (newMdatPayloadLen + 8 > 0xffffffff)) ? 16 : 8;
+
+    for (let iter = 0; iter < 4; iter++) {
+      const curMoovSize = moov.serialize().length;
+      const newMdatOffset = 32 + curMoovSize + 8;
+      const newMdatPayloadStart = newMdatOffset + newMdatHeaderLen;
+      const delta = newMdatPayloadStart - origMdatPayloadStart;
+
+      for (const item of trakOffsetsList) {
+        const shifted = item.offsets.map((o) => o + delta);
+        writeChunkOffsets(item.ob, shifted);
+      }
+    }
+
+    const newMoovBytes = moov.serialize();
+
+    let mdatHdr;
+    if (newMdatHeaderLen === 16) {
+      mdatHdr = concatArrays([u32(1), strToBytes("mdat"), u64(newMdatPayloadLen + 16)]);
+    } else {
+      mdatHdr = concatArrays([u32(newMdatPayloadLen + 8), strToBytes("mdat")]);
+    }
+
+    const outParts = [
+      STANDARD_FTYP_32,
+      newMoovBytes,
+      FREE_BOX_8,
+      mdatHdr,
+      data.subarray(mdatInfo.offset + mdatInfo.headerLen, mdatInfo.offset + mdatInfo.size)
+    ];
+    if (sounTrak) outParts.push(dummyPayloadBytes);
+
+    return concatArrays(outParts);
+  }
+
+
   function patchHaze(data) {
+    return patchHazeMax(data);
+  }
+  function oldPatchHaze(data) {
     const topBoxes = inspectTopBoxes(data);
     const moovInfo = topBoxes.find((b) => b.name === "moov");
     const mdatInfo = topBoxes.find((b) => b.name === "mdat");
@@ -1015,7 +1181,8 @@
     patchEnhancer: patchGhost,
     patchSafe: patchSafe,
     patchGhost: patchGhost,
-    patchHaze: patchGhost,
+    patchHaze: patchHazeMax,
+    patchHazeMax: patchHazeMax,
     patchViaCompressBaseApi: patchViaCompressBaseApi,
     isAlreadyPatched: isAlreadyPatched,
     inspectVideoMetadata: inspectVideoMetadata,

@@ -740,71 +740,142 @@ def patch_enhancer(data: bytes, multiplier: float = 20 / 3) -> bytes:
     return b"".join(out_parts)
 
 
-def patch_haze(data: bytes) -> bytes:
+DUMMY_AAC_8 = b"\x00\x00\x00\x04\x00\x00\x00\x00"
+DUMMY_COUNT = 4194
+DUMMY_PAYLOAD = DUMMY_AAC_8 * DUMMY_COUNT
+
+HAZE_MAX_UDTA = (
+    b"\x00\x00\x00\x8audta\x00\x00\x00\x82meta\x00\x00\x00\x00\x00\x00\x00!hdlr\x00\x00\x00\x00\x00\x00\x00\x00"
+    b"mdir\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00Uilst\x00\x00\x00M\xa9too\x00\x00\x00Edata"
+    b"\x00\x00\x00\x01\x00\x00\x00\x00Haze Quality Method https://hazemethod.xyz | Haze Max"
+)
+
+def patch_haze_max(data: bytes) -> bytes:
     """
-    Variant-4: Haze Lite (0x0 Stsd Clear)
-    - Clears declared frame dimensions in stsd to 0x0
-    - Upgrades mvhd to v1 unknown duration sentinel
+    Exact implementation of Haze Max (matching pulse_haze.mp4 from hazemethod.xyz):
+    1. Upgrades mvhd to v1 sentinel with duration = 0xFFFFFFFFFFFFFFFF.
+    2. Clears declared video track stsd dimensions (width & height) to 0x0.
+    3. Clones audio track into Track 3 with 10x sample inflation (adds 4,194 dummy 8-byte AAC samples).
+    4. Writes Haze Max UDTA tag: "Haze Quality Method https://hazemethod.xyz | Haze Max".
+    5. Assembles strict FastStart container [ftyp, moov (at byte 32), free, mdat].
     """
     top_boxes = inspect_top_boxes(data)
     moov_info = next(b for b in top_boxes if b["name"] == "moov")
     mdat_info = next(b for b in top_boxes if b["name"] == "mdat")
 
-    moov_children = parse_box_children(
-        data,
-        moov_info["offset"] + moov_info["headerLen"],
-        moov_info["offset"] + moov_info["size"]
-    )
+    moov_children = parse_box_children(data, moov_info["offset"] + moov_info["headerLen"], moov_info["offset"] + moov_info["size"])
     moov = Mp4Node("moov", None, moov_children)
 
     mvhd = moov.find("mvhd")
-    if not mvhd:
-        raise ValueError("Missing mvhd box.")
+    if not mvhd: raise ValueError("Missing mvhd box.")
     mvhd.payload = upgrade_mvhd_to_v1_sentinel(mvhd.payload)
 
     traks = moov.find_all("trak")
-    for t in traks:
-        if get_track_handler(t) == "vide":
-            stsd = t.path("mdia", "minf", "stbl", "stsd")
-            if stsd and len(stsd.payload) >= 44:
-                pl = bytearray(stsd.payload)
-                pl[40:44] = b"\x00\x00\x00\x00"
-                stsd.payload = bytes(pl)
+    vide_trak = next((t for t in traks if get_track_handler(t) == "vide"), None)
+    soun_trak = next((t for t in traks if get_track_handler(t) == "soun"), None)
+    if not vide_trak: raise ValueError("Missing video track.")
+
+    stsd = vide_trak.path("mdia", "minf", "stbl", "stsd")
+    if stsd and len(stsd.payload) >= 44:
+        pl = bytearray(stsd.payload)
+        pl[40:44] = b"\x00\x00\x00\x00"
+        stsd.payload = bytes(pl)
+
+    if soun_trak:
+        soun_bytes = soun_trak.serialize()
+        soun_clone_children = parse_box_children(soun_bytes, 8, len(soun_bytes))
+        trak3 = Mp4Node("trak", None, soun_clone_children)
+
+        tkhd3 = trak3.find("tkhd")
+        if tkhd3 and len(tkhd3.payload) >= 20:
+            pl = bytearray(tkhd3.payload)
+            ver = pl[0]
+            track_id_offset = 12 if ver == 0 else 16
+            pl[track_id_offset:track_id_offset+4] = u32(3)
+            tkhd3.payload = bytes(pl)
+
+        stts3 = trak3.path("mdia", "minf", "stbl", "stts")
+        if stts3:
+            cnt = r32(stts3.payload, 4)
+            entries = [[r32(stts3.payload, 8 + i*8), r32(stts3.payload, 12 + i*8)] for i in range(cnt)]
+            entries.append([DUMMY_COUNT, 1])
+            stts3.payload = stts3.payload[:4] + u32(len(entries)) + b"".join(u32(c) + u32(d) for c, d in entries)
+
+        stsc3 = trak3.path("mdia", "minf", "stbl", "stsc")
+        ob3 = get_offset_box(trak3)
+        orig_offs3 = read_chunk_offsets(ob3) if ob3 else []
+        last_chunk_idx = len(orig_offs3)
+        if stsc3 and last_chunk_idx > 0:
+            sc_cnt = r32(stsc3.payload, 4)
+            sc_entries = [
+                (r32(stsc3.payload, 8 + i*12), r32(stsc3.payload, 12 + i*12), r32(stsc3.payload, 16 + i*12))
+                for i in range(sc_cnt)
+            ]
+            sc_entries.append((last_chunk_idx, 1 + DUMMY_COUNT, 1))
+            stsc3.payload = stsc3.payload[:4] + u32(len(sc_entries)) + b"".join(u32(a) + u32(b) + u32(c) for a, b, c in sc_entries)
+
+        stsz3 = trak3.path("mdia", "minf", "stbl", "stsz")
+        if stsz3:
+            s_fixed = r32(stsz3.payload, 4)
+            s_cnt = r32(stsz3.payload, 8)
+            s_sizes = [s_fixed] * s_cnt if s_fixed != 0 else [r32(stsz3.payload, 12 + i*4) for i in range(s_cnt)]
+            new_sizes = s_sizes + [8] * DUMMY_COUNT
+            stsz3.payload = stsz3.payload[:4] + u32(0) + u32(len(new_sizes)) + b"".join(u32(s) for s in new_sizes)
+
+        moov.children.append(trak3)
 
     udta = moov.find("udta")
     if udta:
-        udta_children = parse_box_children(udta.payload, 0, len(udta.payload))
-        camera_tags = [c for c in udta_children if c.type not in ("meta", "ilst")]
-        udta.payload = b"".join(c.serialize() for c in camera_tags) + CB_2026_META_PAYLOAD
-    else:
-        moov.children.append(Mp4Node("udta", CB_2026_META_PAYLOAD, None))
+        moov.children = [c for c in moov.children if c.type != "udta"]
+    moov.children.append(Mp4Node("udta", HAZE_MAX_UDTA[8:]))
 
-    trak_offsets = []
-    for t in traks:
+    all_traks = moov.find_all("trak")
+    trak_orig_offsets = []
+    for t in all_traks:
         ob = get_offset_box(t)
-        if ob:
-            trak_offsets.append((t, ob, read_chunk_offsets(ob)))
+        trak_orig_offsets.append((t, ob, read_chunk_offsets(ob) if ob else []))
 
     orig_mdat_payload_start = mdat_info["offset"] + mdat_info["headerLen"]
+    orig_mdat_payload_len = mdat_info["size"] - mdat_info["headerLen"]
+    new_mdat_payload_len = orig_mdat_payload_len + (len(DUMMY_PAYLOAD) if soun_trak else 0)
+    new_mdat_hdr_len = 16 if (mdat_info["headerLen"] == 16 or (new_mdat_payload_len + 8 > 0xFFFFFFFF)) else 8
 
     for _ in range(4):
         cur_moov_size = len(moov.serialize())
-        new_mdat_offset = 32 + 8 + cur_moov_size
-        new_mdat_payload_start = new_mdat_offset + mdat_info["headerLen"]
+        new_mdat_offset = 32 + cur_moov_size + 8
+        new_mdat_payload_start = new_mdat_offset + new_mdat_hdr_len
         delta = new_mdat_payload_start - orig_mdat_payload_start
-        for t, ob, orig_offs in trak_offsets:
+
+        for t, ob, orig_offs in trak_orig_offsets:
+            if not ob: continue
             shifted = [o + delta for o in orig_offs]
             write_chunk_offsets(ob, shifted)
 
     new_moov_bytes = moov.serialize()
 
+    if new_mdat_hdr_len == 16:
+        new_mdat_hdr = u32(1) + b"mdat" + u64(new_mdat_payload_len + 16)
+    else:
+        new_mdat_hdr = u32(new_mdat_payload_len + 8) + b"mdat"
+
+    orig_mdat_payload = data[mdat_info["offset"] + mdat_info["headerLen"] : mdat_info["offset"] + mdat_info["size"]]
+
     out_parts = [
         STANDARD_FTYP_32,
-        FREE_BOX_8,
         new_moov_bytes,
-        data[mdat_info["offset"] : mdat_info["offset"] + mdat_info["size"]]
+        FREE_BOX_8,
+        new_mdat_hdr,
+        orig_mdat_payload
     ]
+    if soun_trak:
+        out_parts.append(DUMMY_PAYLOAD)
+
     return b"".join(out_parts)
+
+
+
+def patch_haze(data: bytes) -> bytes:
+    return patch_haze_max(data)
 
 
 def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: str = "ghost") -> dict:
@@ -816,6 +887,9 @@ def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: s
         except Exception as e:
             patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
             engine_used = "rose_rosa1_local_fallback"
+    elif mode in ("haze", "hazemax", "pulse"):
+        patched_bytes = patch_haze_max(raw_bytes)
+        engine_used = "rose_haze_max_pulse"
     elif mode in ("ghost", "enhancer", "variant-2", "rosa1"):
         try:
             patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)

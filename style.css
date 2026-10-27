@@ -2260,3 +2260,22 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+.method-pills-row.three-cols {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.pill-dot.blue {
+  background: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+}
+.method-status-badge.haze {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+@media (max-width: 800px) {
+  .method-pills-row.three-cols {
+    grid-template-columns: 1fr;
+  }
+}

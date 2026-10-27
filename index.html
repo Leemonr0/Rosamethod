@@ -13,11 +13,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="./style.css?v=5.0.0" />
+  <link rel="stylesheet" href="./style.css?v=6.0.0" />
   <script>
-    if (localStorage.getItem("rose_version") !== "5.0.0") {
+    if (localStorage.getItem("rose_version") !== "6.0.0") {
       if (window.caches) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-      localStorage.setItem("rose_version", "5.0.0");
+      localStorage.setItem("rose_version", "6.0.0");
     }
   </script>
 </head>
@@ -177,22 +177,30 @@
               </div>
               <span class="method-status-badge rosa2" id="methodStatusBadge">ROSA 2.0 (CLOUD API)</span>
             </div>
-            <div class="method-pills-row">
+                        <div class="method-pills-row three-cols">
               <button type="button" class="method-pill-btn active" id="btnMethodRosa2" data-method="rosa2">
                 <span class="pill-dot green"></span>
                 <div class="pill-text-col">
                   <span class="pill-title">Rosa 2.0 Pro</span>
                   <span class="pill-subtitle">CompressBase API v1</span>
                 </div>
-                <span class="pill-tag recommended">РЕКОМЕНДУЕТСЯ</span>
+                <span class="pill-tag recommended">OFFICIAL</span>
+              </button>
+              <button type="button" class="method-pill-btn" id="btnMethodHaze" data-method="haze">
+                <span class="pill-dot blue"></span>
+                <div class="pill-text-col">
+                  <span class="pill-title">Haze Max</span>
+                  <span class="pill-subtitle">0x0 Stsd + Audio 10x</span>
+                </div>
+                <span class="pill-tag">PULSE HAZE</span>
               </button>
               <button type="button" class="method-pill-btn" id="btnMethodRosa1" data-method="rosa1">
                 <span class="pill-dot purple"></span>
                 <div class="pill-text-col">
                   <span class="pill-title">Rosa 1.0 Local</span>
-                  <span class="pill-subtitle">Offline Ghost FastStart</span>
+                  <span class="pill-subtitle">Ghost 12x FastStart</span>
                 </div>
-                <span class="pill-tag">100% ОФФЛАЙН</span>
+                <span class="pill-tag">OFFLINE</span>
               </button>
             </div>
             <div class="method-desc-text" id="methodDescText">
@@ -590,7 +598,7 @@
     </div>
   </footer>
 
-  <script src="./rose_patcher.js?v=5.0.0"></script>
-  <script src="./app.js?v=5.0.0"></script>
+  <script src="./rose_patcher.js?v=6.0.0"></script>
+  <script src="./app.js?v=6.0.0"></script>
 </body>
 </html>

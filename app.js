@@ -250,8 +250,12 @@ document.addEventListener("DOMContentLoaded", () => {
 /* ============================================================================
    ROSA 1.0 vs ROSA 2.0 METHOD SWITCHER
    ============================================================================ */
+/* ============================================================================
+   ROSA 1.0 vs ROSA 2.0 vs HAZE MAX METHOD SWITCHER
+   ============================================================================ */
 function initBypassMethodSwitcher() {
   const btnRosa2 = document.getElementById("btnMethodRosa2");
+  const btnHaze = document.getElementById("btnMethodHaze");
   const btnRosa1 = document.getElementById("btnMethodRosa1");
   const badge = document.getElementById("methodStatusBadge");
   const desc = document.getElementById("methodDescText");
@@ -261,21 +265,32 @@ function initBypassMethodSwitcher() {
     localStorage.setItem("rose_bypass_method", method);
     const isRu = state.currentLang === "ru";
 
-    if (method === "rosa2") {
+    [btnRosa2, btnHaze, btnRosa1].forEach((b) => b && b.classList.remove("active"));
+
+    if (method === "haze") {
+      if (btnHaze) btnHaze.classList.add("active");
+      if (badge) {
+        badge.className = "method-status-badge haze";
+        badge.textContent = "HAZE MAX (PULSE HAZE)";
+      }
+      if (desc) {
+        desc.innerHTML = isRu
+          ? `<strong>Haze Max (алгоритм pulse_haze.mp4):</strong> обнуляет объявленное разрешение видео в <span class="mono-code">stsd -> 0x0</span> (Тикток отключает стандартные профили даунскейла) + клонирует аудиодорожку в Track 3 с 10x-раздуванием семплов (4 194 AAC dummy-фрейма в хвосте mdat). 100% оффлайн в браузере.`
+          : `<strong>Haze Max (pulse_haze.mp4 algorithm):</strong> Clears declared video resolution in <span class="mono-code">stsd -> 0x0</span> (bypasses TikTok downscaling rules) + clones audio track into Track 3 with 10x sample inflation (4,194 dummy AAC frames). 100% offline in browser.`;
+      }
+    } else if (method === "rosa2") {
       if (btnRosa2) btnRosa2.classList.add("active");
-      if (btnRosa1) btnRosa1.classList.remove("active");
       if (badge) {
         badge.className = "method-status-badge rosa2";
         badge.textContent = "ROSA 2.0 (CLOUD API)";
       }
       if (desc) {
         desc.innerHTML = isRu
-          ? `<strong>Rosa 2.0 (CompressBase Cloud API):</strong> официальный метод обхода через <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Отправляет только легковесный заголовок moov (~150 КБ), генерирует 100% валидный план variant-2 и мгновенно собирает 1080p 120 FPS прямо в браузере без загрузки видео в сеть.`
+          ? `<strong>Rosa 2.0 (CompressBase Cloud API):</strong> официальный метод обхода через <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Отправляет только заголовок moov (~150 КБ), генерирует точный план variant-2 и мгновенно собирает 1080p 120 FPS прямо в браузере без загрузки видео в сеть.`
           : `<strong>Rosa 2.0 (CompressBase Cloud API):</strong> Official bypass method via <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Sends only lightweight moov header (~150 KB), generates official variant-2 plan and builds 1080p 120 FPS locally in browser with zero video upload.`;
       }
     } else {
       if (btnRosa1) btnRosa1.classList.add("active");
-      if (btnRosa2) btnRosa2.classList.remove("active");
       if (badge) {
         badge.className = "method-status-badge rosa1";
         badge.textContent = "ROSA 1.0 (LOCAL PRO)";
@@ -289,9 +304,10 @@ function initBypassMethodSwitcher() {
   }
 
   if (btnRosa2) btnRosa2.addEventListener("click", () => setMethod("rosa2"));
+  if (btnHaze) btnHaze.addEventListener("click", () => setMethod("haze"));
   if (btnRosa1) btnRosa1.addEventListener("click", () => setMethod("rosa1"));
 
-  setMethod(state.selectedBypassMethod || "rosa2");
+  setMethod(state.selectedBypassMethod || "haze");
 }
 
 /* ============================================================================
@@ -616,21 +632,26 @@ async function patchVideoDirectlyInBrowser(file) {
     setStatusText(isRu ? "Этап 3/4: Применение защиты Rose Pro (mvhd duration sentinel v1 + Apple metadata)..." : "Stage 3/4: Injecting Rose Pro mvhd duration sentinel v1 & Apple metadata...");
     
     let patchedBytes = null;
-    let engineUsed = "Rosa 2.0 (CompressBase API v1)";
-    const isRosa2 = (state.selectedBypassMethod || "rosa2") === "rosa2";
+    let engineUsed = "Haze Max (pulse_haze)";
+    const currentMethod = state.selectedBypassMethod || "haze";
 
-    if (isRosa2 && window.RosePatcher && typeof window.RosePatcher.patchViaCompressBaseApi === "function") {
+    if (currentMethod === "haze") {
+      if (speedEl) speedEl.textContent = "HAZE MAX";
+      setStatusText(isRu ? "Этап 3/4: Применение алгоритма Haze Max (0x0 Stsd + Track 3 Audio Ghost)..." : "Stage 3/4: Applying Haze Max algorithm (0x0 Stsd + Track 3 Audio Ghost)...");
+      patchedBytes = (typeof window.RosePatcher.patchHazeMax === "function") ? window.RosePatcher.patchHazeMax(uint8) : window.RosePatcher.patch(uint8, "haze");
+      engineUsed = "Haze Max (pulse_haze)";
+    } else if (currentMethod === "rosa2" && window.RosePatcher && typeof window.RosePatcher.patchViaCompressBaseApi === "function") {
       try {
         if (speedEl) speedEl.textContent = "COMPRESSBASE API";
         setStatusText(isRu ? "Этап 3/4: Запрос плана через CompressBase API v1..." : "Stage 3/4: Requesting plan from CompressBase API v1...");
         patchedBytes = await window.RosePatcher.patchViaCompressBaseApi(uint8, "variant-2", 10000);
         engineUsed = "Rosa 2.0 (CompressBase API v1)";
       } catch (apiErr) {
-        console.warn("CompressBase API error, auto fallback to Rosa 1.0 Local:", apiErr);
-        if (speedEl) speedEl.textContent = "GHOST 120FPS";
-        setStatusText(isRu ? "CompressBase API оффлайн, автоматическое переключение на Rosa 1.0 Local..." : "CompressBase API offline, falling back to Rosa 1.0 Local...");
-        patchedBytes = (typeof window.RosePatcher.patchGhost === "function") ? window.RosePatcher.patchGhost(uint8, 12) : window.RosePatcher.patch(uint8, "ghost");
-        engineUsed = "Rosa 1.0 Local (Fallback)";
+        console.warn("CompressBase API error, auto fallback to Haze Max:", apiErr);
+        if (speedEl) speedEl.textContent = "HAZE FALLBACK";
+        setStatusText(isRu ? "CompressBase API оффлайн, автоматическое переключение на Haze Max..." : "CompressBase API offline, falling back to Haze Max...");
+        patchedBytes = (typeof window.RosePatcher.patchHazeMax === "function") ? window.RosePatcher.patchHazeMax(uint8) : window.RosePatcher.patch(uint8, "ghost");
+        engineUsed = "Haze Max (Fallback)";
       }
     } else {
       if (speedEl) speedEl.textContent = "ROSA 1.0 LOCAL";

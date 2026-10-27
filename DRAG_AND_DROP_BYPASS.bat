@@ -48,18 +48,22 @@ if "%ASPECT_CHOICE%"=="2" (
 echo.
 echo ===========================================================================
 echo  ВЫБЕРИТЕ МЕТОД ОБХОДА TIKTOK:
-echo  [1] Rosa 2.0 (CompressBase Cloud API v1 Patch) - РЕКОМЕНДУЕТСЯ
-echo  [2] Rosa 1.0 (Local FastStart Ghost Sentinel 120 FPS) - 100%% ОФФЛАЙН
+echo  [1] Haze Max (Audio Ghost 10x + 0x0 Stsd - КАК В PULSE_HAZE) - РЕКОМЕНДУЕТСЯ
+echo  [2] Rosa 2.0 (CompressBase Cloud API v1 Patch)
+echo  [3] Rosa 1.0 (Local FastStart Ghost Sentinel 120 FPS) - 100%% ОФФЛАЙН
 echo ===========================================================================
-choice /c 12 /t 5 /d 1 /m "Ваш выбор метода (через 5 сек автовыбор 1): "
+choice /c 123 /t 5 /d 1 /m "Ваш выбор метода (через 5 сек автовыбор 1): "
 set "METHOD_CHOICE=%errorlevel%"
 
-if "%METHOD_CHOICE%"=="2" (
+if "%METHOD_CHOICE%"=="3" (
     set "PATCH_MODE=ghost"
     echo [*] Выбран метод: Rosa 1.0 Local (FastStart Ghost 120 FPS)
-) else (
+) else if "%METHOD_CHOICE%"=="2" (
     set "PATCH_MODE=cb"
     echo [*] Выбран метод: Rosa 2.0 Pro (CompressBase Cloud API v1)
+) else (
+    set "PATCH_MODE=haze"
+    echo [*] Выбран метод: Haze Max (Pulse Haze 0x0 Stsd + Audio Track 3)
 )
 
 echo [*] Нормализация профиля и таймкодов Core Media...
