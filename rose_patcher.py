@@ -404,7 +404,7 @@ def patch_local_variant2(data: bytes, ghost_multiplier: int = 12) -> bytes:
 def patch_via_compressbase_api(data: bytes, posting_device: str = "variant-2", timeout: float = 8.0) -> bytes:
     """
     Call the live https://compressbase.com/api/method/v1/patch endpoint with only the `moov` header,
-    and assemble the returned binary patch plan locally (exact replica of cb_client.mjs).
+    and assemble the returned binary patch plan locally in strict FastStart order.
     """
     top_boxes = inspect_top_boxes(data)
     moovs = [b for b in top_boxes if b["name"] == "moov"]
@@ -413,10 +413,10 @@ def patch_via_compressbase_api(data: bytes, posting_device: str = "variant-2", t
         raise ValueError("MP4 must have one moov and at least one mdat box.")
 
     moov_box = moovs[0]
+    mdat_box = mdats[0]
     moov_body = data[moov_box["offset"] + moov_box["headerLen"] : moov_box["offset"] + moov_box["size"]]
     moov_node = Mp4Node("moov", None, parse_box_children(moov_body, 0, len(moov_body)))
     resolution = read_video_resolution_from_moov(moov_node)
-    # CompressBase API rejects declared resolution where min(w, h) > 1080; clamp manifest resolution if needed
     if min(resolution["width"], resolution["height"]) > 1080:
         if resolution["width"] >= resolution["height"]:
             resolution = {"width": 1920, "height": 1080}
@@ -458,7 +458,6 @@ def patch_via_compressbase_api(data: bytes, posting_device: str = "variant-2", t
     tail_len = plan.get("tailLength", 0) if plan.get("version") == 4 else 0
 
     pos = 4 + plan_len
-    ftyp_part = resp_bytes[pos : pos + ftyp_len]
     pos += ftyp_len
     moov_part = resp_bytes[pos : pos + moov_len]
     pos += moov_len
@@ -466,45 +465,44 @@ def patch_via_compressbase_api(data: bytes, posting_device: str = "variant-2", t
     pos += ghost_len
     tail_part = resp_bytes[pos : pos + tail_len]
 
-    parts = []
-    if plan.get("version") == 3:
-        for box in top_boxes:
-            if box["name"] == "moov":
-                continue
-            if box["name"] == "mdat":
-                parts.append(moov_part)
-                hdr = u32(1) + b"mdat" + u64(box["size"]) if box["headerLen"] == 16 else u32(box["size"]) + b"mdat"
-                parts.append(hdr)
-                parts.append(data[box["offset"] + box["headerLen"] : box["offset"] + box["size"]])
-            else:
-                parts.append(data[box["offset"] : box["offset"] + box["size"]])
-        parts.append(ghost_part)
-        return b"".join(parts)
+    # Enforce strict FastStart layout: [STANDARD_FTYP_32, final_moov, FREE_BOX_8, mdat_hdr, orig_mdat_payload, ghost_part, tail_part]
+    cur_moov_size = len(moov_part)
+    final_moov_bytes = moov_part
 
-    for box in top_boxes:
-        if box["offset"] == plan.get("movedFreeOffset"):
-            continue
-        if box["name"] == "ftyp":
-            parts.append(data[box["offset"] : box["offset"] + box["size"]] if plan.get("version") == 4 else ftyp_part)
-            if plan.get("insertFree"):
-                parts.append(FREE_BOX_8)
-        elif box["name"] == "moov":
-            if plan.get("movedFreeOffset") is not None:
-                parts.append(FREE_BOX_8)
-            parts.append(moov_part)
-        elif box["name"] == "mdat":
-            new_sz = box["size"] + len(ghost_part)
-            hdr = u32(1) + b"mdat" + u64(new_sz) if box["headerLen"] == 16 else u32(new_sz) + b"mdat"
-            parts.append(hdr)
-            parts.append(data[box["offset"] + box["headerLen"] : box["offset"] + box["size"]])
-            parts.append(ghost_part)
-        else:
-            parts.append(data[box["offset"] : box["offset"] + box["size"]])
+    moov_before_mdat = moov_box["offset"] < mdat_box["offset"]
+    if not moov_before_mdat:
+        new_mdat_offset = 32 + cur_moov_size + 8
+        delta = new_mdat_offset - mdat_box["offset"]
+        p_moov_node = Mp4Node("moov", None, parse_box_children(moov_part, 8, len(moov_part)))
+        for t in p_moov_node.find_all("trak"):
+            ob = get_offset_box(t)
+            if ob:
+                offs = read_chunk_offsets(ob)
+                write_chunk_offsets(ob, [o + delta for o in offs])
+        final_moov_bytes = p_moov_node.serialize()
 
-    if plan.get("version") == 4 and tail_part:
-        parts.append(tail_part)
+    orig_mdat_payload = data[mdat_box["offset"] + mdat_box["headerLen"] : mdat_box["offset"] + mdat_box["size"]]
+    new_mdat_payload_len = len(orig_mdat_payload) + len(ghost_part)
 
-    return b"".join(parts)
+    if new_mdat_payload_len + 8 > 0xFFFFFFFF or mdat_box["headerLen"] == 16:
+        mdat_hdr = u32(1) + b"mdat" + u64(new_mdat_payload_len + 16)
+    else:
+        mdat_hdr = u32(new_mdat_payload_len + 8) + b"mdat"
+
+    if not tail_part:
+        tail_payload = b"ZILEM_OPTIMIZED/1 2026-10-03T03:46:48.570Z 1001 (2)_zilem.mp4"
+        tail_part = u32(len(tail_payload) + 8) + b"free" + tail_payload
+
+    out_parts = [
+        STANDARD_FTYP_32,
+        final_moov_bytes,
+        FREE_BOX_8,
+        mdat_hdr,
+        orig_mdat_payload,
+        ghost_part,
+        tail_part
+    ]
+    return b"".join(out_parts)
 
 
 def verify_patched_mp4(data: bytes) -> dict:
@@ -811,7 +809,14 @@ def patch_haze(data: bytes) -> bytes:
 
 def apply_rose_binary_patch(input_mp4_path: Path, output_mp4_path: Path, mode: str = "ghost") -> dict:
     raw_bytes = input_mp4_path.read_bytes()
-    if mode in ("ghost", "enhancer", "variant-2"):
+    if mode in ("rosa2", "cb", "compressbase", "api"):
+        try:
+            patched_bytes = patch_via_compressbase_api(raw_bytes, posting_device="variant-2")
+            engine_used = "rose_rosa2_compressbase_api"
+        except Exception as e:
+            patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
+            engine_used = "rose_rosa1_local_fallback"
+    elif mode in ("ghost", "enhancer", "variant-2", "rosa1"):
         try:
             patched_bytes = patch_local_variant2(raw_bytes, ghost_multiplier=12)
             engine_used = "rose_ghost_120fps_bypass"
@@ -835,7 +840,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Rose MP4 Binary Container Patcher")
     parser.add_argument("input", help="Path to input MP4 video")
     parser.add_argument("output", help="Path to output patched MP4 video")
-    parser.add_argument("--mode", default="ghost", choices=["enhancer", "safe", "ghost", "haze"], help="Patch mode")
+    parser.add_argument("--mode", default="ghost", choices=["enhancer", "safe", "ghost", "haze", "cb", "rosa2", "rosa1"], help="Patch mode")
     args = parser.parse_args()
 
     res = apply_rose_binary_patch(Path(args.input), Path(args.output), mode=args.mode)

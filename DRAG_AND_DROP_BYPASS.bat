@@ -14,7 +14,7 @@ if "%~1"=="" (
 
 set "SRC_FILE=%~1"
 set "STAGE1_TEMP=%~dp1temp_stage1_%RANDOM%.mp4"
-set "FINAL_OUT=%~dp1IMG_%RANDOM%_rose_1080p60.mp4"
+set "FINAL_OUT=%~dp1IMG_%RANDOM%_rose_1080p.mp4"
 
 echo [*] Входной файл: "%~nx1"
 echo [*] Поиск FFmpeg...
@@ -34,22 +34,38 @@ echo  ВЫБЕРИТЕ ФОРМАТ ДЛЯ TIKTOK:
 echo  [1] Вертикальный 9:16 (1080x1920) - Рекомендуется для рекомендаций TikTok
 echo  [2] Оригинальный формат (16:9 1920x1080) - Без полос, горизонтально
 echo ===========================================================================
-choice /c 12 /t 5 /d 1 /m "Ваш выбор (через 5 сек автовыбор 1): "
-set "MODE_CHOICE=%errorlevel%"
+choice /c 12 /t 5 /d 1 /m "Ваш выбор формата (через 5 сек автовыбор 1): "
+set "ASPECT_CHOICE=%errorlevel%"
 
-if "%MODE_CHOICE%"=="2" (
-    echo [*] Режим: Горизонтальный 16:9 (1920x1080) @ 60 FPS CFR, VBV 14.5M cap...
+if "%ASPECT_CHOICE%"=="2" (
+    echo [*] Режим: Горизонтальный 16:9 (1920x1080)...
     set "VF_FILTER=scale=1920:1080:force_original_aspect_ratio=decrease,format=yuv420p"
 ) else (
-    echo [*] Режим: Вертикальный 9:16 (1080x1920) @ 60 FPS CFR, VBV 14.5M cap...
+    echo [*] Режим: Вертикальный 9:16 (1080x1920)...
     set "VF_FILTER=scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
 )
 
-echo [*] Нормализация частоты кадров: 120 FPS -^> 60 FPS CFR (лимит TikTok)
-echo [*] Метаданные: Apple iPhone 16 Pro iOS 18.3.1 Core Media...
+echo.
+echo ===========================================================================
+echo  ВЫБЕРИТЕ МЕТОД ОБХОДА TIKTOK:
+echo  [1] Rosa 2.0 (CompressBase Cloud API v1 Patch) - РЕКОМЕНДУЕТСЯ
+echo  [2] Rosa 1.0 (Local FastStart Ghost Sentinel 120 FPS) - 100%% ОФФЛАЙН
+echo ===========================================================================
+choice /c 12 /t 5 /d 1 /m "Ваш выбор метода (через 5 сек автовыбор 1): "
+set "METHOD_CHOICE=%errorlevel%"
+
+if "%METHOD_CHOICE%"=="2" (
+    set "PATCH_MODE=ghost"
+    echo [*] Выбран метод: Rosa 1.0 Local (FastStart Ghost 120 FPS)
+) else (
+    set "PATCH_MODE=cb"
+    echo [*] Выбран метод: Rosa 2.0 Pro (CompressBase Cloud API v1)
+)
+
+echo [*] Нормализация профиля и таймкодов Core Media...
 echo.
 
-"%FFMPEG_EXE%" -nostdin -y -hide_banner -i "%SRC_FILE%" -map_metadata -1 -metadata make="Apple" -metadata model="iPhone 16 Pro" -metadata software="18.3.1" -metadata:s:v:0 handler_name="Core Media Video" -metadata:s:a:0 handler_name="Core Media Audio" -vf "%VF_FILTER%" -r 60 -fps_mode cfr -g 120 -c:v libx264 -profile:v high -level:v 4.2 -preset slow -crf 16 -maxrate 14500k -bufsize 29000k -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -c:a aac -b:a 320k -ar 48000 -brand mp42 -movflags +faststart "%STAGE1_TEMP%"
+"%FFMPEG_EXE%" -nostdin -y -hide_banner -i "%SRC_FILE%" -map_metadata -1 -metadata make="Apple" -metadata model="iPhone 16 Pro" -metadata software="18.3.1" -metadata:s:v:0 handler_name="Core Media Video" -metadata:s:a:0 handler_name="Core Media Audio" -vf "%VF_FILTER%" -c:v libx264 -profile:v high -level:v 4.2 -preset slow -crf 16 -maxrate 14500k -bufsize 29000k -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -c:a aac -b:a 320k -ar 48000 -brand mp42 -movflags +faststart "%STAGE1_TEMP%"
 
 if errorlevel 1 (
     echo [!] Ошибка перекодирования, пробуем прямой stream-copy...
@@ -63,10 +79,10 @@ if not exist "%STAGE1_TEMP%" (
 )
 
 echo.
-echo [*] Этап 2: Бинарный патч контейнера Rose Pro (FastStart Sentinel + 0 ошибок)...
+echo [*] Этап 2: Бинарный патч контейнера (%PATCH_MODE% FastStart Sentinel)...
 set "PATCHER_PY=%~dp0rose_patcher.py"
 if not exist "%PATCHER_PY%" set "PATCHER_PY=C:\Users\zurbi\.gemini\antigravity\scratch\encodex-base\GITHUB_REPO\rose_patcher.py"
-python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%" --mode ghost
+python "%PATCHER_PY%" "%STAGE1_TEMP%" "%FINAL_OUT%" --mode %PATCH_MODE%
 
 if exist "%STAGE1_TEMP%" del /f /q "%STAGE1_TEMP%"
 
@@ -80,8 +96,8 @@ if exist "%FINAL_OUT%" (
     echo   1. В приложении TikTok: 'Дополнительные параметры' -^> включите
     echo      'Разрешить загрузку в высоком качестве'.
     echo   2. При отправке на телефон через Telegram - отправляйте как ФАЙЛ.
-    echo   3. Первые 2-3 минуты после публикации TikTok показывает 576p превью,
-    echo      пока CDN кеширует 1080p поток. Подождите 3-5 минут!
+    echo   3. Первые 2-3 минуты после публикации TikTok может отдавать 576p превью,
+    echo      пока CDN кэширует 1080p поток. Подождите 3-5 минут!
     echo ===========================================================================
 ) else (
     echo [ERROR] Ошибка при создании финального патча.

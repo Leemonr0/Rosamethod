@@ -808,6 +808,145 @@
   }
 
   // Fast metadata inspector
+    // =========================================================================
+  // Rosa 2.0 Method: Official CompressBase Cloud API v1 Ingestion
+  // Calls https://compressbase.com/api/method/v1/patch sending ONLY the moov header.
+  // Reassembles final MP4 locally with zero full-video network upload.
+  // =========================================================================
+  async function patchViaCompressBaseApi(data, postingDevice = "variant-2", timeoutMs = 12000) {
+    const topBoxes = inspectTopBoxes(data);
+    const moovInfo = topBoxes.find((b) => b.name === "moov");
+    const mdatInfo = topBoxes.find((b) => b.name === "mdat");
+    if (!moovInfo || !mdatInfo) {
+      throw new Error("Missing moov or mdat box.");
+    }
+
+    const moovBody = data.subarray(
+      moovInfo.offset + moovInfo.headerLen,
+      moovInfo.offset + moovInfo.size
+    );
+
+    let meta = inspectVideoMetadata(data);
+    let width = meta.width || 1080;
+    let height = meta.height || 1920;
+    if (Math.min(width, height) > 1080) {
+      if (width >= height) {
+        width = 1920;
+        height = 1080;
+      } else {
+        width = 1080;
+        height = 1920;
+      }
+    }
+
+    const manifest = {
+      version: 1,
+      fileSize: data.length,
+      topBoxes: topBoxes,
+      resolution: { width, height },
+      postingDevice: postingDevice,
+    };
+
+    const headerStr = JSON.stringify(manifest);
+    const headerBytes = strToBytes(headerStr);
+    const reqBody = concatArrays([u32(headerBytes.length), headerBytes, moovBody]);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let resp;
+    try {
+      resp = await fetch("https://compressbase.com/api/method/v1/patch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+        body: reqBody,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!resp.ok) {
+      throw new Error(`CompressBase API returned HTTP ${resp.status}`);
+    }
+
+    const respBuffer = await resp.arrayBuffer();
+    const respBytes = new Uint8Array(respBuffer);
+    if (respBytes.length < 4) throw new Error("Incomplete CompressBase API response.");
+
+    const planLen = r32(respBytes, 0);
+    const planJsonStr = bytesToStr(respBytes.subarray(4, 4 + planLen));
+    const plan = JSON.parse(planJsonStr);
+
+    const ftypLen = plan.ftypLength || 0;
+    const moovLen = plan.moovLength || 0;
+    const ghostLen = plan.ghostLength || 0;
+    const tailLen = plan.version === 4 ? (plan.tailLength || 0) : 0;
+
+    let pos = 4 + planLen;
+    pos += ftypLen;
+    const moovPart = respBytes.subarray(pos, pos + moovLen); pos += moovLen;
+    const ghostPart = respBytes.subarray(pos, pos + ghostLen); pos += ghostLen;
+    const tailPart = respBytes.subarray(pos, pos + tailLen);
+
+    // Assemble in strict FastStart order [STANDARD_FTYP_32, finalMoovBytes, FREE_BOX_8, mdatHdr, origMdatPayload, ghostPart, tailBox]
+    const curMoovSize = moovPart.length;
+    let finalMoovBytes = moovPart;
+
+    // If original moov was after mdat, adjust chunk offsets
+    const moovBeforeMdat = moovInfo.offset < mdatInfo.offset;
+    if (!moovBeforeMdat) {
+      const newMdatOffset = 32 + curMoovSize + 8;
+      const delta = newMdatOffset - mdatInfo.offset;
+      const pMoovChildren = parseBoxChildren(moovPart, 8, moovPart.length);
+      const pMoovNode = new Mp4Node("moov", null, pMoovChildren);
+      const traks = pMoovNode.findAll("trak");
+      for (const t of traks) {
+        const ob = getOffsetBox(t);
+        if (ob) {
+          const offs = readChunkOffsets(ob);
+          const shifted = offs.map((o) => o + delta);
+          writeChunkOffsets(ob, shifted);
+        }
+      }
+      finalMoovBytes = pMoovNode.serialize();
+    }
+
+    const origMdatPayload = data.subarray(
+      mdatInfo.offset + mdatInfo.headerLen,
+      mdatInfo.offset + mdatInfo.size
+    );
+    const newMdatPayloadLen = origMdatPayload.length + ghostPart.length;
+
+    let mdatHdr;
+    if (newMdatPayloadLen + 8 > 0xffffffff || mdatInfo.headerLen === 16) {
+      mdatHdr = concatArrays([u32(1), strToBytes("mdat"), u64(newMdatPayloadLen + 16)]);
+    } else {
+      mdatHdr = concatArrays([u32(newMdatPayloadLen + 8), strToBytes("mdat")]);
+    }
+
+    const outParts = [
+      STANDARD_FTYP_32,
+      finalMoovBytes,
+      FREE_BOX_8,
+      mdatHdr,
+      origMdatPayload,
+      ghostPart,
+    ];
+
+    if (tailPart && tailPart.length > 0) {
+      outParts.push(tailPart);
+    } else {
+      const tailStr = "ZILEM_OPTIMIZED/1 2026-10-03T03:46:48.570Z 1001 (2)_zilem.mp4";
+      const tailBytes = strToBytes(tailStr);
+      outParts.push(concatArrays([u32(tailBytes.length + 8), strToBytes("free"), tailBytes]));
+    }
+
+    return concatArrays(outParts);
+  }
+
   function inspectVideoMetadata(data) {
     try {
       const topBoxes = inspectTopBoxes(data);
@@ -877,6 +1016,7 @@
     patchSafe: patchSafe,
     patchGhost: patchGhost,
     patchHaze: patchGhost,
+    patchViaCompressBaseApi: patchViaCompressBaseApi,
     isAlreadyPatched: isAlreadyPatched,
     inspectVideoMetadata: inspectVideoMetadata,
   };

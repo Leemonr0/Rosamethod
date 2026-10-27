@@ -13,11 +13,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="./style.css?v=4.5.0" />
+  <link rel="stylesheet" href="./style.css?v=5.0.0" />
   <script>
-    if (localStorage.getItem("rose_version") !== "4.5.0") {
+    if (localStorage.getItem("rose_version") !== "5.0.0") {
       if (window.caches) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-      localStorage.setItem("rose_version", "4.5.0");
+      localStorage.setItem("rose_version", "5.0.0");
     }
   </script>
 </head>
@@ -168,6 +168,37 @@
       <div class="studio-grid">
         <!-- Left Column: Dropzone + Live Player + Source Readout -->
         <div class="studio-left">
+          <!-- Method Selection Bar (Rosa 1.0 vs Rosa 2.0) -->
+          <div class="method-card">
+            <div class="method-card-header">
+              <div class="method-card-title-wrap">
+                <span class="method-badge-icon">⚡</span>
+                <span class="method-card-label" data-i18n="method_label">МЕТОД ОБХОДА TIKTOK:</span>
+              </div>
+              <span class="method-status-badge rosa2" id="methodStatusBadge">ROSA 2.0 (CLOUD API)</span>
+            </div>
+            <div class="method-pills-row">
+              <button type="button" class="method-pill-btn active" id="btnMethodRosa2" data-method="rosa2">
+                <span class="pill-dot green"></span>
+                <div class="pill-text-col">
+                  <span class="pill-title">Rosa 2.0 Pro</span>
+                  <span class="pill-subtitle">CompressBase API v1</span>
+                </div>
+                <span class="pill-tag recommended">РЕКОМЕНДУЕТСЯ</span>
+              </button>
+              <button type="button" class="method-pill-btn" id="btnMethodRosa1" data-method="rosa1">
+                <span class="pill-dot purple"></span>
+                <div class="pill-text-col">
+                  <span class="pill-title">Rosa 1.0 Local</span>
+                  <span class="pill-subtitle">Offline Ghost FastStart</span>
+                </div>
+                <span class="pill-tag">100% ОФФЛАЙН</span>
+              </button>
+            </div>
+            <div class="method-desc-text" id="methodDescText">
+              <strong>Rosa 2.0 (CompressBase Cloud API):</strong> официальный метод обхода через <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Отправляет только легковесный заголовок moov (~150 КБ), генерирует точный план variant-2 и мгновенно собирает 1080p 120 FPS прямо в браузере без загрузки видео в сеть.
+            </div>
+          </div>
           <div class="dropzone-box" id="dropzone">
             <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm" hidden />
 
@@ -559,7 +590,7 @@
     </div>
   </footer>
 
-  <script src="./rose_patcher.js?v=4.5.0"></script>
-  <script src="./app.js?v=4.5.0"></script>
+  <script src="./rose_patcher.js?v=5.0.0"></script>
+  <script src="./app.js?v=5.0.0"></script>
 </body>
 </html>

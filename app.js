@@ -9,6 +9,7 @@ const state = {
   theme: "rose",
   currentLang: "en",
   patchMode: "enhancer",
+  selectedBypassMethod: localStorage.getItem("rose_bypass_method") || "rosa2",
   previewWithMethod: true,
   viewMode: "split",
   splitRatio: 0.5,
@@ -238,12 +239,60 @@ const I18N = {
 document.addEventListener("DOMContentLoaded", () => {
   initLanguageSwitcher();
   initPatchModeSwitcher();
+  initBypassMethodSwitcher();
   initViewModeSwitcher();
   initHeroPhoneComparison();
   initUploadDropzone();
   initActionButtons();
   initTikTokUrlChecker();
 });
+
+/* ============================================================================
+   ROSA 1.0 vs ROSA 2.0 METHOD SWITCHER
+   ============================================================================ */
+function initBypassMethodSwitcher() {
+  const btnRosa2 = document.getElementById("btnMethodRosa2");
+  const btnRosa1 = document.getElementById("btnMethodRosa1");
+  const badge = document.getElementById("methodStatusBadge");
+  const desc = document.getElementById("methodDescText");
+
+  function setMethod(method) {
+    state.selectedBypassMethod = method;
+    localStorage.setItem("rose_bypass_method", method);
+    const isRu = state.currentLang === "ru";
+
+    if (method === "rosa2") {
+      if (btnRosa2) btnRosa2.classList.add("active");
+      if (btnRosa1) btnRosa1.classList.remove("active");
+      if (badge) {
+        badge.className = "method-status-badge rosa2";
+        badge.textContent = "ROSA 2.0 (CLOUD API)";
+      }
+      if (desc) {
+        desc.innerHTML = isRu
+          ? `<strong>Rosa 2.0 (CompressBase Cloud API):</strong> официальный метод обхода через <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Отправляет только легковесный заголовок moov (~150 КБ), генерирует 100% валидный план variant-2 и мгновенно собирает 1080p 120 FPS прямо в браузере без загрузки видео в сеть.`
+          : `<strong>Rosa 2.0 (CompressBase Cloud API):</strong> Official bypass method via <span class="mono-code">https://compressbase.com/api/method/v1/patch</span>. Sends only lightweight moov header (~150 KB), generates official variant-2 plan and builds 1080p 120 FPS locally in browser with zero video upload.`;
+      }
+    } else {
+      if (btnRosa1) btnRosa1.classList.add("active");
+      if (btnRosa2) btnRosa2.classList.remove("active");
+      if (badge) {
+        badge.className = "method-status-badge rosa1";
+        badge.textContent = "ROSA 1.0 (LOCAL PRO)";
+      }
+      if (desc) {
+        desc.innerHTML = isRu
+          ? `<strong>Rosa 1.0 (Local Ghost FastStart):</strong> автономный встроенный движок. Внедряет FastStart, duration sentinel v1 и 12x Ghost семплы локально в браузере без обращения к внешним серверам. 100% оффлайн.`
+          : `<strong>Rosa 1.0 (Local Ghost FastStart):</strong> Autonomous built-in engine. Injects FastStart, duration sentinel v1 and 12x Ghost samples locally in browser with zero external network requests. 100% offline.`;
+      }
+    }
+  }
+
+  if (btnRosa2) btnRosa2.addEventListener("click", () => setMethod("rosa2"));
+  if (btnRosa1) btnRosa1.addEventListener("click", () => setMethod("rosa1"));
+
+  setMethod(state.selectedBypassMethod || "rosa2");
+}
 
 /* ============================================================================
    1. LANGUAGE & VIEW MODE SWITCHERS
@@ -567,12 +616,27 @@ async function patchVideoDirectlyInBrowser(file) {
     setStatusText(isRu ? "Этап 3/4: Применение защиты Rose Pro (mvhd duration sentinel v1 + Apple metadata)..." : "Stage 3/4: Injecting Rose Pro mvhd duration sentinel v1 & Apple metadata...");
     
     let patchedBytes = null;
-    if (window.RosePatcher && typeof window.RosePatcher.patch === "function") {
-      patchedBytes = (typeof window.RosePatcher.patchGhost === "function") ? window.RosePatcher.patchGhost(uint8, 12) : window.RosePatcher.patch(uint8, "ghost");
-    } else if (window.RosePatcher && typeof window.RosePatcher.patchSafe === "function") {
-      patchedBytes = window.RosePatcher.patchSafe(uint8);
+    let engineUsed = "Rosa 2.0 (CompressBase API v1)";
+    const isRosa2 = (state.selectedBypassMethod || "rosa2") === "rosa2";
+
+    if (isRosa2 && window.RosePatcher && typeof window.RosePatcher.patchViaCompressBaseApi === "function") {
+      try {
+        if (speedEl) speedEl.textContent = "COMPRESSBASE API";
+        setStatusText(isRu ? "Этап 3/4: Запрос плана через CompressBase API v1..." : "Stage 3/4: Requesting plan from CompressBase API v1...");
+        patchedBytes = await window.RosePatcher.patchViaCompressBaseApi(uint8, "variant-2", 10000);
+        engineUsed = "Rosa 2.0 (CompressBase API v1)";
+      } catch (apiErr) {
+        console.warn("CompressBase API error, auto fallback to Rosa 1.0 Local:", apiErr);
+        if (speedEl) speedEl.textContent = "GHOST 120FPS";
+        setStatusText(isRu ? "CompressBase API оффлайн, автоматическое переключение на Rosa 1.0 Local..." : "CompressBase API offline, falling back to Rosa 1.0 Local...");
+        patchedBytes = (typeof window.RosePatcher.patchGhost === "function") ? window.RosePatcher.patchGhost(uint8, 12) : window.RosePatcher.patch(uint8, "ghost");
+        engineUsed = "Rosa 1.0 Local (Fallback)";
+      }
     } else {
-      throw new Error("RosePatcher engine not initialized.");
+      if (speedEl) speedEl.textContent = "ROSA 1.0 LOCAL";
+      setStatusText(isRu ? "Этап 3/4: Инъекция Rosa 1.0 FastStart Ghost (120 FPS)..." : "Stage 3/4: Injecting Rosa 1.0 FastStart Ghost (120 FPS)...");
+      patchedBytes = (typeof window.RosePatcher.patchGhost === "function") ? window.RosePatcher.patchGhost(uint8, 12) : window.RosePatcher.patch(uint8, "ghost");
+      engineUsed = "Rosa 1.0 Local Pro";
     }
     await sleep(450);
 
