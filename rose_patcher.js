@@ -27,6 +27,7 @@
   const FREE_BOX_8 = new Uint8Array([0x00, 0x00, 0x00, 0x08, 0x66, 0x72, 0x65, 0x65]);
   const DUMMY_AAC_8 = new Uint8Array([0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00]);
   const DUMMY_COUNT = 4194;
+  const JUNK_TAIL_SIZE = 4 * 1024 * 1024; // 4MB Haze Junk Tail padding
 
   const ROSA_TAG_TEXT = "Rosa Quality Method https://leemonr0.github.io/Rosamethod/ | Rosa Pro";
 
@@ -409,6 +410,13 @@
       data.subarray(mdatInfo.offset + mdatInfo.headerLen, mdatInfo.offset + mdatInfo.size)
     ];
     if (sounTrak) outParts.push(dummyPayloadBytes);
+
+    // 4MB free junk tail (dilutes bitrate & matches Haze container size)
+    const junkTail = new Uint8Array(JUNK_TAIL_SIZE + 8);
+    const dvJunk = new DataView(junkTail.buffer);
+    dvJunk.setUint32(0, JUNK_TAIL_SIZE + 8, false);
+    junkTail[4] = 0x66; junkTail[5] = 0x72; junkTail[6] = 0x65; junkTail[7] = 0x65; // "free"
+    outParts.push(junkTail);
 
     return concatArrays(outParts);
   }

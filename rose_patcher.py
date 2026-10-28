@@ -14,6 +14,9 @@ DUMMY_AAC_8 = b"\x00\x00\x00\x04\x00\x00\x00\x00"
 DUMMY_COUNT = 4194
 DUMMY_PAYLOAD = DUMMY_AAC_8 * DUMMY_COUNT
 
+JUNK_TAIL_SIZE = 4 * 1024 * 1024  # 4MB Haze Junk Tail padding
+FREE_JUNK_TAIL = struct.pack(">I", JUNK_TAIL_SIZE + 8) + b"free" + (b"\x00" * JUNK_TAIL_SIZE)
+
 ROSA_TAG_TEXT = "Rosa Quality Method https://leemonr0.github.io/Rosamethod/ | Rosa Pro"
 
 def build_rosa_udta() -> bytes:
@@ -294,6 +297,7 @@ def patch_rosa(data: bytes) -> bytes:
     ]
     if soun_trak:
         out_parts.append(DUMMY_PAYLOAD)
+    out_parts.append(FREE_JUNK_TAIL)
 
     return b"".join(out_parts)
 
